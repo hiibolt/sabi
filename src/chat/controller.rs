@@ -201,7 +201,6 @@ fn update_chatbox(
             return Ok(());
         }
         println!("[ Player finished message ]");
-        // info_text.0 = String::from("");
 
         // Hide textbox parent object
         *vncontainer_visibility = Visibility::Hidden;
