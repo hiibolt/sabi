@@ -1,11 +1,14 @@
 use std::ops::Index;
-
+use anyhow::Context;
 use bevy::prelude::*;
+use crate::{character::{controller::{FadingCharacters, SpriteKey}, CharacterConfig, CharactersResource}, VisualNovelState};
+use crate::compiler::controller::UiRoot;
 
-use crate::{character::{controller::{FadingCharacters, SpriteKey}, CharacterConfig, CharactersResource}, Object, VisualNovelState};
+#[derive(Component)]
+pub struct Character;
 
 pub fn change_character_emotion(
-    sprite: &mut Sprite,
+    image: &mut ImageNode,
     sprites: &Res<CharactersResource>,
     emotion: &str,
     config: &CharacterConfig
@@ -15,12 +18,14 @@ pub fn change_character_emotion(
        outfit: config.outfit.clone(),
        emotion: emotion.to_owned()
    };
-   let image = sprites.0.get(&sprite_key).with_context(|| format!("Sprite not found for {:?}", sprite_key))?;
-   sprite.image = image.clone();
+   let sprite = sprites.0.get(&sprite_key).with_context(|| format!("Sprite not found for {:?}", sprite_key))?;
+   image.image = sprite.clone();
+   
+   Ok(())
 }
 pub fn apply_alpha(
     mut commands: Commands,
-    mut query: Query<&mut Sprite>,
+    mut query: Query<&mut ImageNode, With<Character>>,
     mut fading_characters: ResMut<FadingCharacters>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
@@ -42,7 +47,7 @@ pub fn apply_alpha(
         }
     }
     let mut to_remove: Vec<usize> = Vec::new();
-    let _ = fading_characters.0.iter().enumerate().for_each(|f| {
+    fading_characters.0.iter().enumerate().for_each(|f| {
         if finished_anim.contains(&f.1.0) {
             to_remove.push(f.0);
         }
@@ -66,44 +71,41 @@ pub fn spawn_character(
     sprites: &Res<CharactersResource>,
     fading: &bool,
     fading_characters: &mut ResMut<FadingCharacters>,
-) {
+    ui_root: &Single<Entity, With<UiRoot>>,
+    images: &Res<Assets<Image>>,
+) -> Result<(), BevyError> {
     let sprite_key = SpriteKey {
         character: character_config.name.clone(),
         outfit: character_config.outfit.clone(),
         emotion: character_config.emotion.clone(),
     };
-    let image = match sprites.0.get(&sprite_key) {
-        Some(s) => s.clone(),
-        None => {
-            eprintln!("No sprite found for {:?}", sprite_key);
-            return;
-        }
-    };
-    let entity = commands.spawn((
-        Object {
-            id: format!("_character_{}", character_config.name),
-        },
-        Sprite {
-            image,
-            color: Color::default().with_alpha(if *fading {
-                0.
-            } else { 1. }),
-            ..default()
-        },
-        Transform::default()
-            .with_translation(Vec3 {
-                x: 0.,
-                y: -40.,
-                z: 1.,
-            })
-            .with_scale(Vec3 {
-                x: 0.75,
-                y: 0.75,
-                z: 1.,
-            }),
-        character_config
-    )).id();
+    let image = sprites.0.get(&sprite_key).with_context(|| format!("No sprite found for {:?}", sprite_key))?;
+    let image_asset = images.get(image).with_context(|| format!("Asset not found for {:?}", image))?;
+    let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+    let character_entity = commands.spawn(
+        (
+            ImageNode {
+                image: image.clone(),
+                color: Color::default().with_alpha(if *fading {
+                    0.
+                } else { 1. }),
+                ..default()
+            },
+            Node {
+                position_type: PositionType::Absolute,
+                max_height: Val::Vh(75.),
+                bottom: Val::Px(0.),
+                aspect_ratio: Some(aspect_ratio),
+                ..default()
+            },
+            ZIndex(2),
+            Character,
+            character_config
+        )
+    ).id();
+    commands.entity(ui_root.entity()).add_child(character_entity);
     if *fading {
-        fading_characters.0.push((entity, 0.01, false));
+        fading_characters.0.push((character_entity, 0.01, false));
     }
+    Ok(())
 }

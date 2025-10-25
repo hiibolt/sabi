@@ -4,7 +4,7 @@ use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::character::CharacterOperation;
+use crate::{character::CharacterOperation, chat::controller::GuiChangeTarget};
 
 #[derive(Parser)]
 #[grammar = "../sabi.pest"]
@@ -99,7 +99,7 @@ pub enum CodeStatement {
 #[derive(Debug, Clone)]
 pub enum StageCommand {
     BackgroundChange { background_expr: Box<Expr> },
-    GUIChange { id_expr: Box<Expr>, sprite_expr: Box<Expr> },
+    GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr> },
     SceneChange { scene_expr: Box<Expr> },
     ActChange { act_expr: Box<Expr> },
     CharacterChange { character: String, operation: CharacterOperation },
@@ -177,9 +177,9 @@ pub fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                 .context("GUI change missing sprite expression")?;
             
             // Convert gui_element to the appropriate ID
-            let gui_id = match gui_element_pair.as_str() {
-                "textbox" => "_textbox_background",
-                "namebox" => "_namebox_background",
+            let gui_target = match gui_element_pair.as_str() {
+                "textbox" => GuiChangeTarget::TextBoxBackground,
+                "namebox" => GuiChangeTarget::NameBoxBackground,
                 other => bail!("Unknown GUI element: {}", other)
             };
             
@@ -187,7 +187,7 @@ pub fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                 .context("Failed to build sprite expression for GUI change")?;
             
             StageCommand::GUIChange { 
-                id_expr: Box::new(Expr::String(gui_id.to_string())), 
+                gui_target, 
                 sprite_expr: Box::new(sprite_expr) 
             }
         },

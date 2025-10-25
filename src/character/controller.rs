@@ -5,6 +5,7 @@ use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
 use crate::{character::character_operations::{apply_alpha, change_character_emotion, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage}, ChatScrollStopwatch, GUIScrollText, VisualNovelState};
+use crate::compiler::controller::UiRoot;
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -177,12 +178,14 @@ fn wait_trigger(
 }
 fn update_characters(
     mut commands: Commands,
-    mut character_query: Query<(Entity, &mut CharacterConfig, &mut Sprite)>,
+    mut character_query: Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    ui_root: Single<Entity, With<UiRoot>>,
     sprites: Res<CharactersResource>,
     mut configs: ResMut<Configs>,
     mut fading_characters: ResMut<FadingCharacters>,
     mut character_change_message: MessageReader<CharacterChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
+    images: Res<Assets<Image>>,
 
     _text_object_query: Query<(&mut Text, &mut GUIScrollText)>,
     _scroll_stopwatch: ResMut<ChatScrollStopwatch>,
@@ -196,7 +199,7 @@ fn update_characters(
                 if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
                     warn!("Another instance of the character is already in the World!");
                 }
-                spawn_character(&mut commands, character_config.clone(), &sprites, fading, &mut fading_characters);
+                spawn_character(&mut commands, character_config.clone(), &sprites, fading, &mut fading_characters, &ui_root, &images)?;
                 if *fading {
                     game_state.blocking = true;
                 }
@@ -213,7 +216,7 @@ fn update_characters(
                         return Ok(());
                     }
                 };
-                change_character_emotion(&mut entity.2, &sprites, emotion, character_config);
+                change_character_emotion(&mut entity.2, &sprites, emotion, character_config)?;
             },
             CharacterOperation::Despawn(fading) => {
                 if *fading {

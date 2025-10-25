@@ -22,6 +22,10 @@ struct ControllersReady {
     pub chat_controller: bool,
 }
 
+/* Components */
+#[derive(Component)]
+pub struct UiRoot;
+
 /* Messages */
 #[derive(Message)]
 pub struct TriggerControllersMessage;
@@ -45,12 +49,26 @@ impl Plugin for Compiler {
             .add_message::<TriggerControllersMessage>()
             .add_message::<SceneChangeMessage>()
             .add_message::<ActChangeMessage>()
-            .add_systems(Startup, parse)
+            .add_systems(Startup, (spawn_ui_root, parse))
             .add_systems(Update, check_states.run_if(in_state(SabiState::WaitingForControllers)))
             .add_systems(Update, (run, handle_scene_changes, handle_act_changes).run_if(in_state(SabiState::Running)));
     }
 }
-
+fn spawn_ui_root(
+    mut commands: Commands,
+) {
+    commands.spawn((
+        Node {
+            width: Val::Percent(100.),
+            height: Val::Percent(100.),
+            align_items: AlignItems::FlexEnd,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        BackgroundColor(Color::NONE.into()),
+        UiRoot,
+    ));
+}
 fn check_states(
     mut msg_controller_reader: MessageReader<ControllerReadyMessage>,
     mut controllers_state: ResMut<ControllersReady>,

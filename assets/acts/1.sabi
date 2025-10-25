@@ -1,5 +1,6 @@
 SCENE intro
     (GUI textbox changes to "TEXTBOX_NASTYA")
+    (GUI namebox changes to "NAMEBOX")
     (Background changes to "main_classroom_noon")
     (Nayu appears concerned)
     MC: "Welcome to the new scene system!"
