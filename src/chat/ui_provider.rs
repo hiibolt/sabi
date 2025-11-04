@@ -60,10 +60,10 @@ pub fn textbox() -> impl Bundle {
             width: Val::Percent(100.),
             min_height: Val::Percent(100.),
             padding: UiRect {
-                top: Val::Px(12.),
-                bottom: Val::Px(12.),
-                left: Val::Px(25.),
-                right: Val::Px(25.)
+                top: Val::Percent(2.),
+                bottom: Val::Percent(2.),
+                left: Val::Percent(5.),
+                right: Val::Percent(5.)
             },
             ..default()
         },
