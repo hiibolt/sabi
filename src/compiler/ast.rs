@@ -3,7 +3,7 @@ use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::{character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition}}, chat::controller::GuiChangeTarget};
+use crate::{character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}}, chat::controller::GuiChangeTarget};
 
 #[derive(Parser)]
 #[grammar = "../sabi.pest"]
@@ -156,7 +156,10 @@ pub fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr> {
 fn build_character_spawn_directive(character: &str, action: &str, mut inner_action: Peekable<pest::iterators::Pairs<'_, Rule>>) -> Result<StageCommand> {
     let result = match action {
         "appears" | "fade in" => {
-            let mut parameters: (Option<String>, Option<CharacterPosition>, bool) = (None, None, action == "fade in");
+            let mut info = SpawnInfo {
+                fading: action == "fade in",
+                ..Default::default()
+            };
             let mut added_action = Some(());
             while let Some(_) = added_action {
                 match inner_action.peek() {
@@ -166,7 +169,7 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                      
                         ensure!(emotion_pair.as_rule() == Rule::emotion_name,
                             "Expected emotion name, found {:?}", emotion_pair.as_rule());
-                        parameters.0 = Some(emotion_pair.as_str().to_owned());
+                        info.emotion = Some(emotion_pair.as_str().to_owned());
                     },
                     Some(n) if n.as_rule() == Rule::character_position => {
                         let position_pair = inner_action.next()
@@ -178,12 +181,12 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                             Ok(pos) => pos,
                             Err(e) => bail!(e)
                         };
-                        parameters.1 = Some(position);
+                        info.position = position;
                     }
                     _ => {added_action = None;}
                 };
             }
-            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Spawn(parameters.0, parameters.1, parameters.2) }
+            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Spawn(info) }
         },
         "disappears" | "fade out" => {
             StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Despawn(action == "fade out") }
