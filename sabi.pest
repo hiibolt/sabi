@@ -68,7 +68,15 @@ character_spawn_directive = {
 character_direction_directive = { "looking" | "looks" }
 character_direction = { "left" | "right" }
 character_movement_directive = { "moves" }
-character_position = { "center" | "left" | "right" | "invisible left" | "invisible right" }
+character_position = { 
+                        "center" |
+                        "far left" |
+                        "far right" |
+                        "left" |
+                        "right" |
+                        "invisible left" |
+                        "invisible right"
+                     }
 
 character_action = {
                        (character_spawn_directive ~ character_position? ~ emotion_name?) |
