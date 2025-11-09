@@ -1,11 +1,19 @@
 use std::collections::HashMap;
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
-use crate::{character::character_operations::{apply_alpha, change_character_emotion, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage}, ChatScrollStopwatch, GUIScrollText, VisualNovelState};
+use crate::{ChatScrollStopwatch, GUIScrollText, VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage}};
 use crate::compiler::controller::UiRoot;
+
+pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
+pub const FAR_LEFT_PERCENTAGE: f32 = 5.;
+pub const FAR_RIGHT_PERCENTAGE: f32 = 65.;
+pub const LEFT_PERCENTAGE: f32 = 20.;
+pub const CENTER_PERCENTAGE: f32 = 35.;
+pub const RIGHT_PERCENTAGE: f32 = 50.;
+pub const INVISIBLE_RIGHT_PERCENTAGE: f32 = 140.;
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -26,6 +34,49 @@ pub struct CharacterConfig {
     pub outfits: Vec<String>,
 }
 
+#[derive(Component, Default, Debug, Clone, PartialEq)]
+pub enum CharacterPosition {
+    #[default]
+    Center,
+    FarLeft,
+    FarRight,
+    Left,
+    Right,
+    InvisibleLeft,
+    InvisibleRight,
+}
+
+impl CharacterPosition {
+    pub fn to_percentage_value(&self) -> f32 {
+        match &self {
+            CharacterPosition::Center => CENTER_PERCENTAGE,
+            CharacterPosition::FarLeft => FAR_LEFT_PERCENTAGE,
+            CharacterPosition::FarRight => FAR_RIGHT_PERCENTAGE,
+            CharacterPosition::Left => LEFT_PERCENTAGE,
+            CharacterPosition::Right => RIGHT_PERCENTAGE,
+            CharacterPosition::InvisibleLeft => INVISIBLE_LEFT_PERCENTAGE,
+            CharacterPosition::InvisibleRight => INVISIBLE_RIGHT_PERCENTAGE
+        }
+    }
+}
+
+impl TryFrom<&str> for CharacterPosition {
+    type Error = BevyError;
+    
+    fn try_from(value: &str) -> Result<Self, BevyError> {
+        match value {
+            "center" => Ok(CharacterPosition::Center),
+            "far left" => Ok(CharacterPosition::FarLeft),
+            "far right" => Ok(CharacterPosition::FarRight),
+            "left" => Ok(CharacterPosition::Left),
+            "right" => Ok(CharacterPosition::Right),
+            "invisible left" => Ok(CharacterPosition::InvisibleLeft),
+            "invisible right" => Ok(CharacterPosition::InvisibleRight),
+            other => { Err(anyhow::anyhow!("Unhandled direction provided {:?}", other).into()) }
+        }
+    }
+}
+
 /* Resources */
 #[derive(Resource)]
 struct HandleToCharactersFolder(Handle<LoadedFolder>);
@@ -35,6 +86,8 @@ pub struct CharactersResource(pub CharacterSprites);
 struct Configs(CharactersConfig);
 #[derive(Resource, Default)]
 pub struct FadingCharacters(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
+#[derive(Resource, Default)]
+pub struct MovingCharacters(pub Vec<(Entity, f32)>); // entity, target_position
 
 /* Custom types */
 #[derive(Hash, Eq, PartialEq, Debug)]
@@ -47,10 +100,25 @@ type CharacterSprites = HashMap<SpriteKey, Handle<Image>>;
 type CharactersConfig = HashMap<String, CharacterConfig>;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CharacterDirection {
+    Left,
+    Right
+}
+
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct SpawnInfo {
+    pub emotion: Option<String>,
+    pub position: CharacterPosition,
+    pub fading: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CharacterOperation {
-    Spawn(Option<String>, bool), // emotion, fading
+    Spawn(SpawnInfo), // emotion, position, fading
     EmotionChange(String),
     Despawn(bool), // fading
+    Look(CharacterDirection),
+    Move(CharacterPosition),
 }
 
 /* Messages */
@@ -62,24 +130,28 @@ pub struct CharacterChangeMessage {
 
 impl CharacterChangeMessage {
     pub fn is_blocking(&self) -> bool {
-        if let CharacterOperation::Spawn(_, true) = self.operation {
-            true
-        } else if let CharacterOperation::Despawn(true) = self.operation {
-            true
-        } else { false }
+        match &self.operation {
+            CharacterOperation::Spawn(info) => {
+                if info.fading { true } else { false }
+            },
+            CharacterOperation::Despawn(true) => true,
+            _ => false
+        }
     }
 }
 
 pub struct CharacterController;
 impl Plugin for CharacterController {
     fn build(&self, app: &mut App) {
-        app.insert_resource(FadingCharacters::default())
+        app.insert_resource(MovingCharacters::default())
+            .insert_resource(FadingCharacters::default())
             .add_message::<CharacterChangeMessage>()
             .init_state::<CharacterControllerState>()
             .add_systems(OnEnter(CharacterControllerState::Loading), import_characters)
             .add_systems(Update, setup.run_if(in_state(CharacterControllerState::Loading)))
             .add_systems(Update, wait_trigger.run_if(in_state(CharacterControllerState::Idle)))
-            .add_systems(Update, (update_characters, apply_alpha).run_if(in_state(CharacterControllerState::Running)));
+            .add_systems(Update, (update_characters, apply_alpha, move_characters)
+                .run_if(in_state(CharacterControllerState::Running)));
     }
 }
 fn define_characters_map(
@@ -183,6 +255,7 @@ fn update_characters(
     sprites: Res<CharactersResource>,
     mut configs: ResMut<Configs>,
     mut fading_characters: ResMut<FadingCharacters>,
+    mut moving_characters: ResMut<MovingCharacters>,
     mut character_change_message: MessageReader<CharacterChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
     images: Res<Assets<Image>>,
@@ -193,14 +266,14 @@ fn update_characters(
     for msg in character_change_message.read() {
         let character_config = configs.0.get_mut(&msg.character).context(format!("Character config not found for {}", &msg.character))?;
         match &msg.operation {
-            CharacterOperation::Spawn(emotion, fading) => {
-                let emotion = if let Some(e) = emotion { e } else { &character_config.emotion };
+            CharacterOperation::Spawn(info) => {
+                let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
                 character_config.emotion = emotion.clone();
                 if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
                     warn!("Another instance of the character is already in the World!");
                 }
-                spawn_character(&mut commands, character_config.clone(), &sprites, fading, &mut fading_characters, &ui_root, &images)?;
-                if *fading {
+                spawn_character(&mut commands, character_config.clone(), &sprites, info.fading, &mut fading_characters, &ui_root, &images, info.position.clone())?;
+                if info.fading {
                     game_state.blocking = true;
                 }
             },
@@ -228,6 +301,18 @@ fn update_characters(
                     for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
                         commands.entity(entity.0).despawn();
                     }
+                }
+            },
+            CharacterOperation::Look(direction) => {
+                for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+                    image.flip_x = direction == &CharacterDirection::Left;
+                }
+            },
+            CharacterOperation::Move(position) => {
+                for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+                    let target_position = position.to_percentage_value();
+                    moving_characters.0.push((entity, target_position));
+                    game_state.blocking = true;
                 }
             }
         }

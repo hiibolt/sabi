@@ -28,7 +28,7 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
     background_change = { "Background" ~ "changes" ~ "to" ~ expr }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
-    character_change = { character_name ~ character_action ~ emotion_name? }
+    character_change = { character_name ~ character_action }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
@@ -59,7 +59,30 @@ character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
 gui_element = { "textbox" | "namebox" }
-character_action = { "appears" | "disappears" | "fade in" | "fade out" }
+character_spawn_directive = {
+                                "appears" |
+                                "disappears" |
+                                "fade in" |
+                                "fade out"
+                            }
+character_direction_directive = { "looking" | "looks" }
+character_direction = { "left" | "right" }
+character_movement_directive = { "moves" }
+character_position = { 
+                        "center" |
+                        "far left" |
+                        "far right" |
+                        "left" |
+                        "right" |
+                        "invisible left" |
+                        "invisible right"
+                     }
+
+character_action = {
+                       (character_spawn_directive ~ character_position? ~ emotion_name?) |
+                       (character_direction_directive ~ character_direction) |
+                       (character_movement_directive ~ character_position)
+                   }
 
 // Intrinsic types
 number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }

@@ -1,8 +1,10 @@
 use std::ops::Index;
 use anyhow::Context;
 use bevy::prelude::*;
-use crate::{character::{controller::{FadingCharacters, SpriteKey}, CharacterConfig, CharactersResource}, VisualNovelState};
+use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterPosition, FadingCharacters, MovingCharacters, SpriteKey}}};
 use crate::compiler::controller::UiRoot;
+
+const MOVEMENT_STEP: f32 = 0.2;
 
 #[derive(Component)]
 pub struct Character;
@@ -22,6 +24,43 @@ pub fn change_character_emotion(
    image.image = sprite.clone();
    
    Ok(())
+}
+pub fn move_characters(
+    query: Query<(Entity, &mut Node), With<Character>>,
+    mut moving_characters: ResMut<MovingCharacters>,
+    mut game_state: ResMut<VisualNovelState>,
+) {
+    for (entity, mut node) in query {
+        let enumerated_element = moving_characters.0.iter().enumerate().find(|(_, e)| e.0 == entity);
+        if let Some((index, target_pos)) = enumerated_element {
+            let new_value = match node.left {
+                Val::Percent(val) => {
+                    if (val - target_pos.1).abs() < MOVEMENT_STEP {
+                        target_pos.1
+                    } else if val < target_pos.1 {
+                        val + MOVEMENT_STEP
+                    } else { val - MOVEMENT_STEP }
+                },
+                _ => {
+                    warn!("Movement directives accepts only characters with percentage value as position!");
+                    moving_characters.0.remove(index);
+                    if moving_characters.0.is_empty() {
+                        game_state.blocking = false;
+                        return;
+                    }
+                    continue;
+                }
+            };
+            node.left = Val::Percent(new_value);
+            if new_value == target_pos.1 {
+                moving_characters.0.remove(index);
+            }
+            if moving_characters.0.is_empty() {
+                game_state.blocking = false;
+                return;
+            }
+        }
+    }
 }
 pub fn apply_alpha(
     mut commands: Commands,
@@ -69,10 +108,11 @@ pub fn spawn_character(
     commands: &mut Commands,
     character_config: CharacterConfig,
     sprites: &Res<CharactersResource>,
-    fading: &bool,
+    fading: bool,
     fading_characters: &mut ResMut<FadingCharacters>,
     ui_root: &Single<Entity, With<UiRoot>>,
     images: &Res<Assets<Image>>,
+    position: CharacterPosition,
 ) -> Result<(), BevyError> {
     let sprite_key = SpriteKey {
         character: character_config.name.clone(),
@@ -86,16 +126,17 @@ pub fn spawn_character(
         (
             ImageNode {
                 image: image.clone(),
-                color: Color::default().with_alpha(if *fading {
+                color: Color::default().with_alpha(if fading {
                     0.
                 } else { 1. }),
                 ..default()
             },
             Node {
                 position_type: PositionType::Absolute,
-                max_height: Val::Vh(75.),
-                bottom: Val::Px(0.),
+                max_height: Val::Percent(75.),
+                bottom: Val::Percent(0.),
                 aspect_ratio: Some(aspect_ratio),
+                left: Val::Percent(position.to_percentage_value()),
                 ..default()
             },
             ZIndex(2),
@@ -104,7 +145,7 @@ pub fn spawn_character(
         )
     ).id();
     commands.entity(ui_root.entity()).add_child(character_entity);
-    if *fading {
+    if fading {
         fading_characters.0.push((character_entity, 0.01, false));
     }
     Ok(())

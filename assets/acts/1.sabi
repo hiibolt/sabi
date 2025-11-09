@@ -15,10 +15,10 @@ SCENE main
     Nayu: (happy) "You can now switch between scenes easily."
 
     (Nayu disappears)
-    (Scene "charactertest" begins)
+    (Scene "characterspawning" begins)
 CURTAIN
 
-SCENE charactertest
+SCENE characterspawning
     MC: "We are making some tests on character handling!"
     (Nayu appears)
     Nayu: "I just appeared with my default emotion, which is neutral :|"
@@ -30,6 +30,29 @@ SCENE charactertest
     Nayu: "I just learned how to fade in into the scene and: guess what?"
     (Nayu fade out)
     
+    (Scene "characterdirection" begins)
+CURTAIN
+
+SCENE characterdirection
+    (Nayu appears)
+    Nayu: "Default direction of sprite images must be towards right."
+    (Nayu looks left)
+    Nayu: "In this way I can coherently change my direction during the scene"
+    (Nayu looks right)
+    Nayu: "Use 'looks'/'looking' directive to change my direction"
+    (Nayu fade out)
+    (Scene "charactersmovement" begins)
+CURTAIN
+
+SCENE charactersmovement
+    (Nayu appears invisible left happy)
+    Nayu: "It seems like I'm not here..."
+    (Nayu moves center)
+    Nayu: "But here I am! Ready to move left and right on the screen"
+    (Nayu moves left)
+    Nayu: "Speaking of which... I think I'm gonna leave again"
+    (Nayu moves invisible right)
+    (Nayu fade out)
     (Scene "epilogue" begins)
 CURTAIN
 
