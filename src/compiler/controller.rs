@@ -176,7 +176,6 @@ fn parse ( mut game_state: ResMut<VisualNovelState> ) -> Result<(), BevyError> {
     
     Ok(())
 }
-
 fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut game_state: ResMut<'a, VisualNovelState>,
     
@@ -203,11 +202,12 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
                 character_change_message: &mut character_change_message,
             })
             .context("Failed to invoke statement")?;
+    } else {
+        info!("Finished scripts!");
     }
 
     Ok(())
 }
-
 fn handle_scene_changes(
     mut scene_change_messages: MessageReader<SceneChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
@@ -226,7 +226,6 @@ fn handle_scene_changes(
 
     Ok(())
 }
-
 fn handle_act_changes(
     mut act_change_messages: MessageReader<ActChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,

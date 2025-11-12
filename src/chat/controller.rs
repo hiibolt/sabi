@@ -1,7 +1,6 @@
 use crate::{chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage, UiRoot}, VisualNovelState};
 
 use std::collections::HashMap;
-
 use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch, ui::RelativeCursorPosition};
 
@@ -95,6 +94,8 @@ fn setup(
                             .to_string();
                         gui_sprites.insert(filename, handle.clone().typed());
                     }
+                } else {
+                    return Err(anyhow::anyhow!("Could not find chat loaded folder!").into());
                 }
 
                 commands.insert_resource(GuiImages(gui_sprites));
