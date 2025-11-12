@@ -1,16 +1,19 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
+
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, VisualNovelState};
-use crate::compiler::ast::{build_scenes, Acts, Rule, SabiParser};
-use std::path::PathBuf;
+use crate::compiler::ast::Act;
+use std::collections::HashMap;
+use bevy::asset::{LoadState, LoadedFolder};
+use bevy::color::palettes::css::{BLACK, WHITE};
 use bevy::prelude::*;
-use anyhow::{bail, ensure, Context, Result};
-use pest::Parser;
+use anyhow::{Context, Result};
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
-enum SabiState {
+pub enum SabiState {
     #[default]
+    Idle,
     WaitingForControllers,
     Running,
 }
@@ -20,6 +23,7 @@ struct ControllersReady {
     pub background_controller: bool,
     pub character_controller: bool,
     pub chat_controller: bool,
+    pub compiler_controller: bool,
 }
 
 /* Components */
@@ -28,9 +32,11 @@ pub struct UiRoot;
 
 /* Messages */
 #[derive(Message)]
-pub struct TriggerControllersMessage;
+pub struct ControllersSetStateMessage(pub SabiState);
 #[derive(Message)]
 pub struct ControllerReadyMessage(pub Controller);
+#[derive(Message)]
+pub struct SabiStart(pub ScriptId);
 
 /* Custom Types */
 pub enum Controller {
@@ -39,20 +45,88 @@ pub enum Controller {
     Chat,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct ScriptId {
+    pub chapter: String,
+    pub act: String,
+}
+
+/* Resources */
+#[derive(Resource)]
+struct HandleToScriptsFolder(Handle<LoadedFolder>);
+#[derive(Resource, Default)]
+struct ScriptsResource(ScriptsMap);
+type ScriptsMap = HashMap<ScriptId, Handle<Act>>;
+#[derive(Resource)]
+struct CurrentScript(pub ScriptId);
+
 pub struct Compiler;
 impl Plugin for Compiler {
     fn build(&self, app: &mut App) {
         app
             .init_state::<SabiState>()
             .init_resource::<ControllersReady>()
+            .init_resource::<ScriptsResource>()
             .add_message::<ControllerReadyMessage>()
-            .add_message::<TriggerControllersMessage>()
+            .add_message::<ControllersSetStateMessage>()
             .add_message::<SceneChangeMessage>()
             .add_message::<ActChangeMessage>()
-            .add_systems(Startup, (spawn_ui_root, parse))
+            .add_message::<SabiStart>()
+            .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
+            .add_systems(OnEnter(SabiState::WaitingForControllers), 
+                (
+                    spawn_ui_root,
+                    trigger_loading_controllers,
+                    import_scripts_folder
+                ).chain())
             .add_systems(Update, check_states.run_if(in_state(SabiState::WaitingForControllers)))
+            .add_systems(OnEnter(SabiState::Running), trigger_running_controllers)
             .add_systems(Update, (run, handle_scene_changes, handle_act_changes).run_if(in_state(SabiState::Running)));
     }
+}
+fn trigger_running_controllers(
+    mut msg_writer: MessageWriter<ControllersSetStateMessage>,
+    mut visual_novel_state: ResMut<VisualNovelState>,
+    current_script: Res<CurrentScript>,
+    scripts_resource: Res<ScriptsResource>,
+    acts: Res<Assets<Act>>,
+) -> Result<(), BevyError> {
+    let act_handle = scripts_resource.0.get(&current_script.0)
+        .context("Could not find script handle")?;
+    let act = acts.get(act_handle.id())
+        .context("Could not find script element")?;
+    
+    visual_novel_state.act = Box::new(act.clone());
+    visual_novel_state.statements = act.scenes.get(&act.entrypoint)
+        .context("Error retrieving act entrypoint")?
+        .statements.clone().into_iter();
+    visual_novel_state.blocking = false;
+    
+    msg_writer.write(ControllersSetStateMessage(SabiState::Running));
+    Ok(())
+}
+fn trigger_loading_controllers(
+    mut msg_writer: MessageWriter<ControllersSetStateMessage>,
+) {
+    msg_writer.write(ControllersSetStateMessage(SabiState::WaitingForControllers));
+}
+fn check_start(
+    mut commands: Commands,
+    mut state: ResMut<NextState<SabiState>>,
+    mut msg_reader: MessageReader<SabiStart>
+) {
+    for msg in msg_reader.read() {
+        let script_id = msg.0.clone();
+        commands.insert_resource(CurrentScript(script_id));
+        state.set(SabiState::WaitingForControllers);
+    }
+}
+fn import_scripts_folder(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>
+) {
+    let loaded_folder = asset_server.load_folder("acts");
+    commands.insert_resource(HandleToScriptsFolder(loaded_folder));
 }
 fn spawn_ui_root(
     mut commands: Commands,
@@ -67,14 +141,86 @@ fn spawn_ui_root(
         },
         BackgroundColor(Color::NONE.into()),
         UiRoot,
+        children![
+            (
+                Node {
+                    width: Val::Percent(100.),
+                    height: Val::Percent(100.),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::Srgba(BLACK)),
+                children![
+                    (
+                        Text::from("Loading"),
+                        TextColor(Color::Srgba(WHITE)),
+                        TextFont {
+                            font_size: 40.,
+                            ..default()
+                        }
+                    )
+                ],
+                GlobalZIndex(100),
+                DespawnOnExit(SabiState::WaitingForControllers)
+            )
+        ]
     ));
+}
+fn define_script_entry(
+    handle: Handle<Act>
+) -> Result<(ScriptId, Handle<Act>), BevyError> {
+    let path = match handle.path() {
+        Some(asset_path) => asset_path.path(),
+        None => { return Err(anyhow::anyhow!("Error retrieving script path").into()) }
+    };
+    
+    let script_id = if path.iter().count() == 3 {
+        let chapter = path.components().clone().nth(1)
+            .context("Chapter component is not valid")?
+            .as_os_str().to_str().context("Could not convert chapter path to os_str")?
+            .to_owned();
+        let act = path.file_stem().context("Act component is not valid")?
+            .to_str().context("Could not convert act path to str")?
+            .to_owned();
+        ScriptId { chapter, act }
+    } else {
+        return Err(anyhow::anyhow!("Script path is not correct {}", path.display()).into())
+    };
+    Ok((script_id, handle))
 }
 fn check_states(
     mut msg_controller_reader: MessageReader<ControllerReadyMessage>,
     mut controllers_state: ResMut<ControllersReady>,
-    mut msg_writer: MessageWriter<TriggerControllersMessage>,
     mut sabi_state: ResMut<NextState<SabiState>>,
-) {
+    asset_server: Res<AssetServer>,
+    folder_handle: Res<HandleToScriptsFolder>,
+    loaded_folders: Res<Assets<LoadedFolder>>,
+    mut scripts_resource: ResMut<ScriptsResource>,
+) -> Result<(), BevyError> {
+    if !controllers_state.compiler_controller {
+        if let Some(state) = asset_server.get_load_state(folder_handle.0.id()) {
+            match state {
+                LoadState::Loaded => {
+                    if let Some(loaded_folder) = loaded_folders.get(folder_handle.0.id()) {
+                        for handle in &loaded_folder.handles {
+                            let (script_id, entry) = define_script_entry(handle.clone().typed())?;
+                            scripts_resource.0.insert(script_id, entry);
+                        }
+                        info!("Resource complete: {:?}", scripts_resource.0);
+                        controllers_state.compiler_controller = true;
+                    } else {
+                        return Err(anyhow::anyhow!("Could not find script file loaded folder!").into());
+                    }
+                }
+                LoadState::Failed(e) => {
+                    return Err(anyhow::anyhow!("Error loading scripts assets: {}", e.to_string()).into());
+                }
+                _ => {}
+            }
+        }
+    }
+    
     for event in msg_controller_reader.read() {
         let controller = match event.0 {
             Controller::Background => &mut controllers_state.background_controller,
@@ -85,95 +231,10 @@ fn check_states(
     }
     if controllers_state.background_controller
        && controllers_state.character_controller
-       && controllers_state.chat_controller {
-        msg_writer.write(TriggerControllersMessage);
+       && controllers_state.chat_controller
+       && controllers_state.compiler_controller {
         sabi_state.set(SabiState::Running);
     }
-}
-
-fn parse_direntry ( 
-    acts: &mut Acts,
-    dir_entry: std::fs::DirEntry
-) -> Result<()> {
-    let file_type = dir_entry.file_type()
-        .context("Couldn't get file type!")?;
-    
-    if file_type.is_file() {
-        let file_path = dir_entry.path();
-        ensure!(file_path.extension().map_or(false, |ext| ext == "sabi"), "Recieved a file that wasn't a `.sabi` file: {:?}", file_path.extension());
-        
-        // Get the act name from the file stem
-        let act_name = dir_entry
-            .path()
-            .file_stem()
-            .context("Invalid script file name")?
-            .to_string_lossy()
-            .into_owned();
-    
-        // Compile the act
-        info!("Compiling act: {}", act_name);
-        let scenes = {
-            let script_contents = std::fs::read_to_string(&file_path)
-                .with_context(|| format!("Failed to read script file: {:?}", file_path))?;
-            let scene_pair = SabiParser::parse(Rule::act, &script_contents)
-                .with_context(|| format!("Failed to parse script file: {}", act_name))?
-                .next()
-                .context("Script file is empty")?;
-            
-            build_scenes(scene_pair)
-                .context("Failed to build scenes from AST")?
-        };
-        
-        ensure!(acts.insert(act_name.clone(), Box::new(scenes)).is_none(), "Duplicate act name '{}'", act_name);
-        return Ok(());
-    }
-
-    if file_type.is_dir() {
-        for entry_result in std::fs::read_dir(dir_entry.path())
-            .context("Couldn't read directory!")? {
-            let entry = entry_result
-                .context("Couldn't get directory entry!")?;
-            parse_direntry(acts, entry)?;
-        }
-        return Ok(());
-    }
-
-    bail!("Recieved a directory entry that wasn't a file or directory (likely a symlink)!");
-}
-fn parse ( mut game_state: ResMut<VisualNovelState> ) -> Result<(), BevyError> {
-    info!("Starting parsing");
-    
-    let mut acts: Acts = Acts::new();
-    for dir_entry_result in std::fs::read_dir(PathBuf::from(".").join("assets").join("acts"))
-        .context("...while trying to read from the scripts directory")?
-    {
-        let dir_entry = dir_entry_result
-            .context("...while trying to read a directory entry in the scripts directory")?;
-        parse_direntry(&mut acts, dir_entry)
-            .context("...while trying to parse a script file or directory")?;
-    }
-    
-    // Setup entrypoint - use first available act and its entrypoint scene
-    let first_act_id = acts.keys().min()
-        .context("No acts found! Please ensure you have at least one `.sabi` file in the acts directory.")?
-        .clone();
-    
-    let act = acts.get(&first_act_id)
-        .context("Failed to get first act")?
-        .clone();
-        
-    let scene = act.scenes.get(&act.entrypoint)
-        .context("Failed to get entrypoint scene")?
-        .clone();
-    
-    game_state.acts = acts;
-    game_state.act = act.clone();
-    game_state.scene = scene;
-    game_state.statements = game_state.scene.statements.clone().into_iter();
-    game_state.blocking = false;
-    
-    info!("Completed pre-compilation successfully - starting with act '{}', scene '{}'", first_act_id, act.entrypoint);
-    
     Ok(())
 }
 
@@ -230,23 +291,26 @@ fn handle_scene_changes(
 fn handle_act_changes(
     mut act_change_messages: MessageReader<ActChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
+    mut current_script: ResMut<CurrentScript>,
+    scripts_resource: Res<ScriptsResource>,
+    scripts_assets: Res<Assets<Act>>,
 ) -> Result<(), BevyError> {
     for msg in act_change_messages.read() {
-        let new_act = game_state.acts.get(&msg.act_id)
-            .with_context(|| format!("Act '{}' not found", msg.act_id))?
+        current_script.0.act = msg.act_id.clone();
+        let act_handle = scripts_resource.0.get(&current_script.0).with_context(|| format!("Could not find act handle for {}", current_script.0.act))?;
+        let act = scripts_assets.get(act_handle).with_context(|| format!("Could not find act {:?}", act_handle))?;
+        
+        info!("Changing to act: {}", current_script.0.act);
+        
+        let entrypoint_scene = act.scenes.get(&act.entrypoint)
+            .with_context(|| format!("Entrypoint scene '{}' not found in act '{}'", act.entrypoint, current_script.0.act))?
             .clone();
         
-        info!("Changing to act: {}", msg.act_id);
-        
-        let entrypoint_scene = new_act.scenes.get(&new_act.entrypoint)
-            .with_context(|| format!("Entrypoint scene '{}' not found in act '{}'", new_act.entrypoint, msg.act_id))?
-            .clone();
-        
-        game_state.act = new_act.clone();
+        game_state.act = Box::new(act.clone());
         game_state.scene = entrypoint_scene;
         game_state.statements = game_state.scene.statements.clone().into_iter();
         game_state.blocking = false;
-        info!("[ Act changed to '{}', starting at entrypoint scene '{}' ]", msg.act_id, new_act.entrypoint);
+        info!("[ Act changed to '{}', starting at entrypoint scene '{}' ]", msg.act_id, act.entrypoint);
     }
     
     Ok(())

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
-use crate::{ChatScrollStopwatch, GUIScrollText, VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage}};
+use crate::{ChatScrollStopwatch, GUIScrollText, VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
 use crate::compiler::controller::UiRoot;
 
 pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
@@ -17,12 +17,23 @@ pub const INVISIBLE_RIGHT_PERCENTAGE: f32 = 140.;
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
-enum CharacterControllerState {
+pub(crate) enum CharacterControllerState {
     #[default]
-    Loading,
     Idle,
+    Loading,
     Running,
 }
+
+impl From<SabiState> for CharacterControllerState {
+    fn from(value: SabiState) -> Self {
+        match value {
+            SabiState::Idle => CharacterControllerState::Idle,
+            SabiState::WaitingForControllers => CharacterControllerState::Loading,
+            SabiState::Running => CharacterControllerState::Running,
+        }
+    }
+}
+
 /* Components */
 #[derive(Component, Debug, Default, Asset, TypePath, Deserialize, Clone)]
 pub struct CharacterConfig {
@@ -241,11 +252,11 @@ fn import_characters(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.insert_resource(HandleToCharactersFolder(loaded_folder));
 }
 fn wait_trigger(
-    mut msg_reader: MessageReader<TriggerControllersMessage>,
+    mut msg_reader: MessageReader<ControllersSetStateMessage>,
     mut controller_state: ResMut<NextState<CharacterControllerState>>,
 ) {
-    if msg_reader.read().count() > 0 {
-        controller_state.set(CharacterControllerState::Running);
+    for msg in msg_reader.read() {
+        controller_state.set(msg.0.into());
     }
 }
 fn update_characters(

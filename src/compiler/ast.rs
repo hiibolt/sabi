@@ -1,4 +1,5 @@
 use std::{collections::HashMap, iter::Peekable};
+use bevy::{asset::Asset, reflect::TypePath};
 use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
@@ -82,13 +83,11 @@ pub fn expr_to_string(expr: &Expr) -> Result<String> {
     }
 }
 
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Asset, TypePath)]
 pub struct Act {
     pub scenes: HashMap<String, Box<Scene>>,
     pub entrypoint: String,
 }
-pub type Acts = HashMap<String, Box<Act>>;
 
 #[derive(Debug, Clone)]
 pub enum CodeStatement {
