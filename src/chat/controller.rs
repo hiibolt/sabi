@@ -110,6 +110,7 @@ fn setup(
                 commands.insert_resource(GuiImages(gui_sprites));
                 controller_state.set(ChatControllerState::Idle);
                 msg_writer.write(ControllerReadyMessage(Controller::Chat));
+                info!("chat controller ready");
             },
             LoadState::Failed(e) => {
                 return Err(anyhow::anyhow!("Error loading GUI assets: {}", e.to_string()).into());

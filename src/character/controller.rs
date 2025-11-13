@@ -158,9 +158,9 @@ impl Plugin for CharacterController {
             .insert_resource(FadingCharacters::default())
             .add_message::<CharacterChangeMessage>()
             .init_state::<CharacterControllerState>()
+            .add_systems(Update, wait_trigger.run_if(in_state(CharacterControllerState::Idle)))
             .add_systems(OnEnter(CharacterControllerState::Loading), import_characters)
             .add_systems(Update, setup.run_if(in_state(CharacterControllerState::Loading)))
-            .add_systems(Update, wait_trigger.run_if(in_state(CharacterControllerState::Idle)))
             .add_systems(Update, (update_characters, apply_alpha, move_characters)
                 .run_if(in_state(CharacterControllerState::Running)));
     }
@@ -231,6 +231,7 @@ fn setup(
                     define_characters_map(commands, configs, loaded_folder)?;
                     ev_writer.write(ControllerReadyMessage(Controller::Character));
                     controller_state.set(CharacterControllerState::Idle);
+                    info!("character controller ready");
                 } else {
                     return Err(
                         anyhow::anyhow!("Error loading character assets").into(),

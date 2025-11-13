@@ -1,7 +1,7 @@
 use std::ops::Index;
 use anyhow::Context;
 use bevy::prelude::*;
-use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterControllerState, CharacterPosition, FadingCharacters, MovingCharacters, SpriteKey}}};
+use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterPosition, FadingCharacters, MovingCharacters, SpriteKey}}, compiler::controller::SabiState};
 use crate::compiler::controller::UiRoot;
 
 const MOVEMENT_STEP: f32 = 0.4;
@@ -142,7 +142,7 @@ pub fn spawn_character(
             ZIndex(2),
             Character,
             character_config,
-            DespawnOnExit(CharacterControllerState::Running)
+            DespawnOnEnter(SabiState::Idle)
         )
     ).id();
     commands.entity(ui_root.entity()).add_child(character_entity);
