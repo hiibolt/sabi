@@ -1,5 +1,4 @@
-use crate::{chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section}, compiler::controller::{Controller, ControllerReadyMessage, TriggerControllersMessage, UiRoot}, VisualNovelState};
-
+use crate::{VisualNovelState, chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage, UiRoot}};
 use std::collections::HashMap;
 use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch, ui::RelativeCursorPosition};
@@ -18,11 +17,21 @@ pub struct GUIChangeMessage {
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
-enum ChatControllerState {
+pub(crate) enum ChatControllerState {
     #[default]
-    Loading,
     Idle,
+    Loading,
     Running,
+}
+
+impl From<SabiState> for ChatControllerState {
+    fn from(value: SabiState) -> Self {
+        match value {
+            SabiState::Idle => ChatControllerState::Idle,
+            SabiState::WaitingForControllers => ChatControllerState::Loading,
+            SabiState::Running => ChatControllerState::Running,
+        }
+    }
 }
 
 /* Components */
@@ -213,11 +222,11 @@ fn update_chatbox(
     Ok(())
 }
 fn wait_trigger(
-    mut msg_reader: MessageReader<TriggerControllersMessage>,
+    mut msg_reader: MessageReader<ControllersSetStateMessage>,
     mut controller_state: ResMut<NextState<ChatControllerState>>,
 ) {
-    if msg_reader.read().count() > 0 {
-        controller_state.set(ChatControllerState::Running);
+    for msg in msg_reader.read() {
+        controller_state.set(msg.0.into());
     }
 }
 fn update_gui(

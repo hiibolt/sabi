@@ -2,67 +2,42 @@ mod background;
 mod character;
 mod chat;
 mod compiler;
+mod loader;
 
 use crate::background::*;
 use crate::character::*;
 use crate::chat::*;
+use crate::compiler::ast::Act;
+use crate::compiler::controller::SabiStart;
+use crate::compiler::controller::ScriptId;
 use crate::compiler::*;
 use crate::compiler::ast;
+use crate::loader::CharacterJsonLoader;
+use crate::loader::PestLoader;
 
-use bevy::asset::AssetLoader;
 use bevy::ecs::error::ErrorContext;
 use bevy::{
     prelude::*,
     window::*,
 };
 use std::vec::IntoIter;
-use thiserror::Error;
 
-#[derive(Debug, Error)]
-pub enum CharacterJsonError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("JSON parse error: {0}")]
-    Serde(#[from] serde_json::Error),
-}
-
-#[derive(Default)]
-pub struct CharacterJsonLoader;
-impl AssetLoader for CharacterJsonLoader {
-    type Asset = CharacterConfig;
-    type Settings = ();
-    type Error = CharacterJsonError;
-
-    fn load(
-            &self,
-            reader: &mut dyn bevy::asset::io::Reader,
-            _settings: &Self::Settings,
-            _load_context: &mut bevy::asset::LoadContext,
-        ) -> impl bevy::tasks::ConditionalSendFuture<Output = std::result::Result<Self::Asset, Self::Error>> {
-        Box::pin(async move {
-            let mut bytes = Vec::new();
-            reader.read_to_end(&mut bytes).await?;
-            let parsed: CharacterConfig = serde_json::from_slice(&bytes)?;
-            Ok(parsed)
-        })
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["json"]
-    }
-}
-
+/// Resource containing main configuration of Visual Novel.\n
+/// It mainly handles [Act] state and player-designated constants
 #[derive(Resource, Default)]
-pub struct VisualNovelState {
+pub(crate) struct VisualNovelState {
     // Player-designated constants
     playername: String,
 
-    // Game state
-    acts: ast::Acts,
     act: Box<ast::Act>,
     scene: Box<ast::Scene>,
     statements: IntoIter<ast::Statement>,
     blocking: bool,
+}
+
+#[derive(Resource, Default)]
+pub struct UserDefinedConstants {
+    pub playername: String,
 }
 
 fn error_handler ( err: BevyError, ctx: ErrorContext ) {
@@ -83,9 +58,12 @@ fn main() {
                 ..default()
                 })
         )
+        .init_resource::<UserDefinedConstants>()
         .init_resource::<VisualNovelState>()
         .init_asset::<CharacterConfig>()
         .init_asset_loader::<CharacterJsonLoader>()
+        .init_asset::<Act>()
+        .init_asset_loader::<PestLoader>()
         .set_error_handler(error_handler)
         .add_systems(Startup, setup)
         .add_plugins((
@@ -100,11 +78,14 @@ fn main() {
 fn setup(
     mut commands: Commands,
     mut game_state: ResMut<VisualNovelState>,
+    mut msg_writer: MessageWriter<SabiStart>,
+    user_defined_constants: Res<UserDefinedConstants>,
 ) {
     // This would normally be filled in by the player
-    game_state.playername = String::from("Bolt");
+    game_state.playername = user_defined_constants.playername.clone();
 
     // Create our primary camera (which is
     //  necessary even for 2D games)
     commands.spawn(Camera2d::default());
+    msg_writer.write(SabiStart(ScriptId { chapter: "Chapter 1".into(), act: "1".into() }));
 }
