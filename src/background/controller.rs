@@ -53,9 +53,9 @@ impl Plugin for BackgroundController {
     fn build(&self, app: &mut App) {
         app.add_message::<BackgroundChangeMessage>()
             .init_state::<BackgroundControllerState>()
+            .add_systems(Update, check_state_change.run_if(in_state(BackgroundControllerState::Idle)))
             .add_systems(OnEnter(BackgroundControllerState::Loading), import_backgrounds_folder)
             .add_systems(Update, check_loading_state.run_if(in_state(BackgroundControllerState::Loading)))
-            .add_systems(Update, check_state_change.run_if(in_state(BackgroundControllerState::Idle)))
             .add_systems(Update, update_background.run_if(in_state(BackgroundControllerState::Running)));
     }
 }
@@ -104,10 +104,11 @@ fn check_loading_state(
                     },
                     Transform::default(),
                     BackgroundNode,
-                    DespawnOnExit(BackgroundControllerState::Running),
+                    DespawnOnEnter(SabiState::Idle),
                 ));
                 controller_state.set(BackgroundControllerState::Idle);
                 msg_writer.write(ControllerReadyMessage(Controller::Background));
+                info!("background controller ready");
             },
             LoadState::Failed(e) => {
                 return Err(anyhow::anyhow!("Error loading background assets: {}", e.to_string()).into());
@@ -118,7 +119,7 @@ fn check_loading_state(
     Ok(())
 }
 /// Initiate import procedure and insert [bevy::asset::LoadedFolder] handle into [HandleToBackgroundsFolder] resource.
-///! Currently only "backgrounds" folder in bevy "assets" root is supported
+/// Currently only "backgrounds" folder in bevy "assets" root is supported
 fn import_backgrounds_folder(mut commands: Commands, asset_server: Res<AssetServer>){
     let loaded_folder = asset_server.load_folder("backgrounds");
     commands.insert_resource(HandleToBackgroundsFolder(loaded_folder));

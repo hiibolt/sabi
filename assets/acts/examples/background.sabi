@@ -1,0 +1,11 @@
+SCENE background_example
+    (GUI textbox changes to "TEXTBOX_NASTYA")
+    (GUI namebox changes to "NAMEBOX")
+    Nayu: "In Sabi there is a dedicated module to handle background operations."
+    (Background changes to "main_classroom_noon")
+    Nayu: "By now, there are not so many operations available - only basic ones"
+    Nayu: "You have just seen a background spawning, which guarantees despawning at visual novel exit"
+    (Background changes to "main_classroom_day")
+    Nayu: "And you can change backgrounds during the scene"
+    Nayu: "More functionalities are on the way, but it would be great to have feedback about it!"
+CURTAIN

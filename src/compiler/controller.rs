@@ -1,7 +1,7 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
 
-use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, VisualNovelState};
+use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 use crate::compiler::ast::Act;
 use std::collections::HashMap;
 use bevy::asset::{LoadState, LoadedFolder};
@@ -35,20 +35,12 @@ pub struct UiRoot;
 pub struct ControllersSetStateMessage(pub SabiState);
 #[derive(Message)]
 pub struct ControllerReadyMessage(pub Controller);
-#[derive(Message)]
-pub struct SabiStart(pub ScriptId);
 
 /* Custom Types */
 pub enum Controller {
     Background,
     Character,
     Chat,
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct ScriptId {
-    pub chapter: String,
-    pub act: String,
 }
 
 /* Resources */
@@ -72,11 +64,12 @@ impl Plugin for Compiler {
             .add_message::<SceneChangeMessage>()
             .add_message::<ActChangeMessage>()
             .add_message::<SabiStart>()
+            .add_systems(OnEnter(SabiState::Idle), propagate_state)
             .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
             .add_systems(OnEnter(SabiState::WaitingForControllers), 
                 (
                     spawn_ui_root,
-                    trigger_loading_controllers,
+                    propagate_state,
                     import_scripts_folder
                 ).chain())
             .add_systems(Update, check_states.run_if(in_state(SabiState::WaitingForControllers)))
@@ -105,10 +98,11 @@ fn trigger_running_controllers(
     msg_writer.write(ControllersSetStateMessage(SabiState::Running));
     Ok(())
 }
-fn trigger_loading_controllers(
+fn propagate_state(
     mut msg_writer: MessageWriter<ControllersSetStateMessage>,
+    state: Res<State<SabiState>>,
 ) {
-    msg_writer.write(ControllersSetStateMessage(SabiState::WaitingForControllers));
+    msg_writer.write(ControllersSetStateMessage(state.clone()));
 }
 fn check_start(
     mut commands: Commands,
@@ -176,7 +170,7 @@ fn define_script_entry(
     };
     
     let script_id = if path.iter().count() == 3 {
-        let chapter = path.components().clone().nth(1)
+        let chapter = path.components().nth(1)
             .context("Chapter component is not valid")?
             .as_os_str().to_str().context("Could not convert chapter path to os_str")?
             .to_owned();
@@ -246,6 +240,8 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut scene_change_message: MessageWriter<'e, SceneChangeMessage>,
     mut act_change_message: MessageWriter<'f, ActChangeMessage>,
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
+    
+    mut state: ResMut<NextState<SabiState>>,
 
 ) -> Result<(), BevyError> {
     if game_state.blocking {
@@ -265,6 +261,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
             .context("Failed to invoke statement")?;
     } else {
         info!("Finished scripts!");
+        state.set(SabiState::Idle);
     }
 
     Ok(())

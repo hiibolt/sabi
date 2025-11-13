@@ -1,5 +1,5 @@
 use bevy::{color::palettes::css::RED, prelude::*, ui::RelativeCursorPosition};
-use crate::chat::{GUIScrollText, controller::{ChatControllerState, InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, VNContainer}};
+use crate::{chat::{GUIScrollText, controller::{InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, VNContainer}}, compiler::controller::SabiState};
 
 pub fn backplate_container() -> impl Bundle {
     (
@@ -13,7 +13,7 @@ pub fn backplate_container() -> impl Bundle {
         },
         Visibility::Hidden,
         VNContainer,
-        DespawnOnExit(ChatControllerState::Running)
+        DespawnOnEnter(SabiState::Idle)
     )
 }
 
@@ -107,6 +107,6 @@ pub fn infotext(asset_server: &Res<AssetServer>) -> impl Bundle {
         GlobalZIndex(4),
         Visibility::Hidden,
         InfoText,
-        DespawnOnExit(ChatControllerState::Running)
+        DespawnOnEnter(SabiState::Idle)
     )
 }
