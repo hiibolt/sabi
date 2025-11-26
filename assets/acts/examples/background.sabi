@@ -2,10 +2,18 @@ SCENE background_example
     (GUI textbox changes to "TEXTBOX_NASTYA")
     (GUI namebox changes to "NAMEBOX")
     Nayu: "In Sabi there is a dedicated module to handle background operations."
-    (Background changes to "main_classroom_noon")
-    Nayu: "By now, there are not so many operations available - only basic ones"
-    Nayu: "You have just seen a background spawning, which guarantees despawning at visual novel exit"
     (Background changes to "main_classroom_day")
+    Nayu: "Starting from basic functions, like spawning this background..."
+    (Background dissolves to "main_classroom_night")
+    Nayu: "...to run a dissolving animation which gradually transform the background image into another."
+    Nayu: "Or dissolve the image into a clear screen"
+    (Background dissolves)
+    Nayu: "We can either slide the background toward a direction using cardinal points"
+    (Background changes to "main_classroom_day")
+    (Background slides to West)
+    (Background changes to "main_classroom_day")
+    Nayu: "By the way, this module despawns background nodes at visual novel exit"
+    (Background changes to "main_classroom_night")
     Nayu: "And you can change backgrounds during the scene"
     Nayu: "More functionalities are on the way, but it would be great to have feedback about it!"
 CURTAIN

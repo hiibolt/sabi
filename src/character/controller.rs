@@ -125,7 +125,7 @@ pub struct SpawnInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CharacterOperation {
-    Spawn(SpawnInfo), // emotion, position, fading
+    Spawn(SpawnInfo), 
     EmotionChange(String),
     Despawn(bool), // fading
     Look(CharacterDirection),

@@ -45,13 +45,10 @@ impl Invoke for Dialogue {
 impl Invoke for StageCommand {
     fn invoke( &self, ctx: InvokeContext ) -> Result<()> {
         match self {
-            StageCommand::BackgroundChange { background_expr } => {
-                let background_id = background_expr.evaluate_into_string()
-                    .context("...while evaluating BackgroundChange expression")?;
-                
-                info!("Invoking StageCommand::BackgroundChange to {}", background_id);
+            StageCommand::BackgroundChange { operation } => {
+                info!("Invoking StageCommand::BackgroundChange to {:?}", operation);
                 ctx.background_change_message.write(BackgroundChangeMessage {
-                    background_id
+                    operation: operation.clone(),
                 });
             },
             StageCommand::GUIChange { gui_target, sprite_expr } => {

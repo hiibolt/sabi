@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use bevy::asset::{LoadState, LoadedFolder};
+use bevy::image::TRANSPARENT_IMAGE_HANDLE;
 use bevy::prelude::*;
 use bevy::{app::{App, Plugin}, asset::{AssetServer, Handle}};
 use anyhow::Context;
 
+use crate::VisualNovelState;
 use crate::compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot};
 
 /* States */
@@ -30,7 +32,9 @@ impl From<SabiState> for BackgroundControllerState {
 
 /* Components */
 #[derive(Component)]
-pub struct BackgroundNode;
+pub(crate) struct BackgroundNode;
+#[derive(Component)]
+pub(crate) struct NextBackground;
 
 /* Resources */
 /// Resource used to reference the [Handle] to [LoadedFolder] of backgrounds.
@@ -39,24 +43,49 @@ struct HandleToBackgroundsFolder(Handle<LoadedFolder>);
 /// Resource to map [`Handle<Image>`] of background images to background asset names.
 #[derive(Resource)]
 struct BackgroundImages(HashMap::<String, Handle<Image>>);
+#[derive(Resource, Default)]
+struct Dissolving(Option<f32>);
+#[derive(Resource, Default)]
+struct Sliding(BackgroundDirection);
 
 /* Messages */
 /// Message used to instruct [BackgroundController] to change current background.
 #[derive(Message)]
-pub struct BackgroundChangeMessage {
-    /// Background image name (without extension)
-    pub background_id: String
+pub(crate) struct BackgroundChangeMessage {
+    pub operation: BackgroundOperation,
 }
 
-pub struct BackgroundController;
+/* Custom Types */
+#[derive(Debug, Clone)]
+pub(crate) enum BackgroundOperation {
+    ChangeTo(String),
+    DissolveTo(Option<String>),
+    SlideTo(BackgroundDirection),
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) enum BackgroundDirection {
+    #[default]
+    North,
+    South,
+    East,
+    West,
+}
+
+pub(crate) struct BackgroundController;
 impl Plugin for BackgroundController {
     fn build(&self, app: &mut App) {
         app.add_message::<BackgroundChangeMessage>()
             .init_state::<BackgroundControllerState>()
+            .init_resource::<Dissolving>()
             .add_systems(Update, check_state_change.run_if(in_state(BackgroundControllerState::Idle)))
             .add_systems(OnEnter(BackgroundControllerState::Loading), import_backgrounds_folder)
             .add_systems(Update, check_loading_state.run_if(in_state(BackgroundControllerState::Loading)))
-            .add_systems(Update, update_background.run_if(in_state(BackgroundControllerState::Running)));
+            .add_systems(Update, (
+                update_background,
+                run_dissolving_animation,
+                run_sliding_animation,
+            ).run_if(in_state(BackgroundControllerState::Running)));
     }
 }
 
@@ -93,7 +122,7 @@ fn check_loading_state(
                 }
 
                 /* Background Setup */
-                let ui_root = ui_root.with_context(|| "Cannot find UiRoot node in the World")?;
+                let ui_root = ui_root.context("Cannot find UiRoot node in the World")?;
                 commands.entity(ui_root.entity()).with_child((
                     ImageNode::default(),
                     Node {
@@ -137,13 +166,111 @@ fn check_state_change(
 fn update_background(
     mut background_change_message: MessageReader<BackgroundChangeMessage>,
     background_images: Res<BackgroundImages>,
-    mut background_query: Single<&mut ImageNode, With<BackgroundNode>>,
+    mut background_query: Single<(Entity, &mut ImageNode, &mut Node), With<BackgroundNode>>,
+    mut vn_state: ResMut<VisualNovelState>,
+    mut commands: Commands,
 ) -> Result<(), BevyError> {
     for msg in background_change_message.read() {
-        let background_handle = background_images.0.get(&msg.background_id)
-            .with_context(|| format!("Background '{}' does not exist", msg.background_id))?;
-        background_query.image = background_handle.clone();
-        info!("[ Set background to '{}']", msg.background_id);
+        match &msg.operation {
+            BackgroundOperation::ChangeTo(target) => {
+                let background_handle = background_images.0.get(target)
+                    .with_context(|| format!("Background '{}' does not exist", target))?;
+                background_query.1.image = background_handle.clone();
+                background_query.2.top = Val::Auto;
+                background_query.2.left = Val::Auto;
+                background_query.2.bottom = Val::Auto;
+                background_query.2.right = Val::Auto;
+                info!("[ Change background to '{}']", target);
+            },
+            BackgroundOperation::DissolveTo(target) => {
+                commands.insert_resource(Dissolving(Some(1.)));
+                let image_handle = if let Some(target) = target {
+                    background_images.0.get(target)
+                        .context(format!("Background '{}' does not exist", target))?
+                } else {
+                    &TRANSPARENT_IMAGE_HANDLE
+                };
+                commands.entity(background_query.0).with_child((
+                    ImageNode {
+                        image: image_handle.clone(),
+                        color: Color::default().with_alpha(1.),
+                        ..default()
+                    },
+                    Node {
+                        width: Val::Percent(100.),
+                        height: Val::Percent(100.),
+                        position_type: PositionType::Absolute,
+                        ..default()
+                    },
+                    Transform::default(),
+                    NextBackground,
+                    DespawnOnEnter(SabiState::Idle),
+                ));
+                vn_state.blocking = true;
+                info!("[ Dissolve background to '{:?}']", target);
+            },
+            BackgroundOperation::SlideTo(direction) => {
+                commands.insert_resource(Sliding(direction.clone()));
+                vn_state.blocking = true;
+                info!("[ Sliding background to '{:?}']", direction);
+            }
+        }
     }
+    Ok(())
+}
+
+/// If a valid [Dissolving] resource is present, this system runs blocks the user input and runs dissolving animation from a background to another one
+fn run_dissolving_animation(
+    mut commands: Commands,
+    mut dissolving: ResMut<Dissolving>,
+    mut background_query: Single<&mut ImageNode, With<BackgroundNode>>,
+    mut next_background_query: Single<(Entity, &mut ImageNode), (With<NextBackground>, Without<BackgroundNode>)>,
+    mut vn_state: ResMut<VisualNovelState>,
+) -> Result<(), BevyError> {
+    
+    if let Some(alpha) = &mut dissolving.0 {
+        background_query.color.set_alpha(alpha.clone());
+        next_background_query.1.color.set_alpha(1. - alpha.clone());
+        *alpha -= 0.005;
+        if *alpha <= 0. {
+            commands.insert_resource(Dissolving(None));
+            background_query.image = next_background_query.1.image.clone();
+            background_query.color.set_alpha(1.);
+            commands.entity(next_background_query.0).despawn();
+            vn_state.blocking = false;
+        }
+    }
+    
+    Ok(())
+}
+
+/// If a [Sliding] resource is set, this system blocks the user input and runs the sliding animation of the background
+fn run_sliding_animation(
+    mut commands: Commands,
+    sliding: Option<ResMut<Sliding>>,
+    mut background_query: Single<&mut Node, With<BackgroundNode>>,
+    mut vn_state: ResMut<VisualNovelState>,
+) -> Result<(), BevyError> {
+    
+    if let Some(sliding) = sliding {
+        vn_state.blocking = true;
+        let parameter: &mut Val = match &sliding.0 {
+            BackgroundDirection::North => &mut background_query.bottom,
+            BackgroundDirection::East  => &mut background_query.left,
+            BackgroundDirection::South => &mut background_query.top,
+            BackgroundDirection::West  => &mut background_query.right,
+        };
+        *parameter = match parameter {
+            Val::Percent(val) => Val::Percent(val.clone() + 0.5),
+            _ => Val::Percent(0.),
+        };
+        if let Val::Percent(val) = parameter {
+            if val.clone() > 100. {
+                commands.remove_resource::<Sliding>();
+                vn_state.blocking = false;
+            }
+        }
+    }
+    
     Ok(())
 }

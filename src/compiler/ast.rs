@@ -4,14 +4,14 @@ use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::{character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}}, chat::controller::GuiChangeTarget};
+use crate::{background::controller::{BackgroundDirection, BackgroundOperation}, character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}}, chat::controller::GuiChangeTarget};
 
 #[derive(Parser)]
 #[grammar = "../sabi.pest"]
-pub struct SabiParser;
+pub(crate) struct SabiParser;
 
 lazy_static::lazy_static! {
-    pub static ref PRATT_PARSER: PrattParser<Rule> = {
+    pub(crate) static ref PRATT_PARSER: PrattParser<Rule> = {
         use pest::pratt_parser::{Assoc::*, Op};
         // Precedence is defined from lowest to highest priority
         PrattParser::new()
@@ -20,13 +20,13 @@ lazy_static::lazy_static! {
 }
 
 // Trait for evaluating expressions by flattening them
-pub trait Evaluate {
+pub(crate) trait Evaluate {
     fn evaluate_into_string(&self) -> Result<String>;
     fn evaluate(&self) -> Result<Expr>;
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub(crate) enum Expr {
     Number(f64),
     String(String),
     Add { lhs: Box<Expr>, rhs: Box<Expr> }
@@ -36,8 +36,9 @@ impl Evaluate for Expr {
     fn evaluate_into_string(&self) -> Result<String> {
         let evaluated = self.evaluate()
             .context("Failed to evaluate expression")?;
-        expr_to_string(&evaluated)
-            .context("Failed to convert evaluated expression to string")
+        let res = expr_to_string(&evaluated)
+            .context("Failed to convert evaluated expression to string");
+        res
     }
     fn evaluate(&self) -> Result<Expr> {
         match self {
@@ -72,7 +73,7 @@ impl Evaluate for Expr {
 }
 
 // Helper function to convert Expr to String
-pub fn expr_to_string(expr: &Expr) -> Result<String> {
+pub(crate) fn expr_to_string(expr: &Expr) -> Result<String> {
     match expr {
         Expr::String(s) => Ok(s.clone()),
         Expr::Number(n) => Ok(n.to_string()),
@@ -84,19 +85,19 @@ pub fn expr_to_string(expr: &Expr) -> Result<String> {
 }
 
 #[derive(Debug, Clone, Default, Asset, TypePath)]
-pub struct Act {
+pub(crate) struct Act {
     pub scenes: HashMap<String, Box<Scene>>,
     pub entrypoint: String,
 }
 
 #[derive(Debug, Clone)]
-pub enum CodeStatement {
+pub(crate) enum CodeStatement {
     Log { exprs: Vec<Expr> }
 }
 
 #[derive(Debug, Clone)]
-pub enum StageCommand {
-    BackgroundChange { background_expr: Box<Expr> },
+pub(crate) enum StageCommand {
+    BackgroundChange { operation: BackgroundOperation },
     GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr> },
     SceneChange { scene_expr: Box<Expr> },
     ActChange { act_expr: Box<Expr> },
@@ -104,13 +105,13 @@ pub enum StageCommand {
 }
 
 #[derive(Debug, Clone)]
-pub struct Dialogue {
+pub(crate) struct Dialogue {
     pub character: String,
     pub dialogue: Expr
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement {
+pub(crate) enum Statement {
     Code(CodeStatement),
     Stage(StageCommand),
     Dialogue(Dialogue)
@@ -118,11 +119,11 @@ pub enum Statement {
 
 
 #[derive(Debug, Clone, Default)]
-pub struct Scene {
+pub(crate) struct Scene {
     pub statements: Vec<Statement>
 }
 
-pub fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr> {
+pub(crate) fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr> {
     PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::number => {
@@ -243,7 +244,7 @@ fn build_character_movement_directive(character: &str, action: &str, mut inner_a
     Ok(result)
 }
 
-pub fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
+pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
     ensure!(pair.as_rule() == Rule::stage_command, 
         "Expected stage rule, found {:?}", pair.as_rule());
     
@@ -252,11 +253,47 @@ pub fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
     
     let result = match command_pair.as_rule() {
         Rule::background_change => {
-            let expr_pair = command_pair.into_inner().next()
-                .context("Background change missing expression")?;
-            let expr = build_expression(expr_pair)
-                .context("Failed to build expression for background change")?;
-            StageCommand::BackgroundChange { background_expr: Box::new(expr) }
+            let mut inner = command_pair.into_inner();
+            let background_operation = inner.next().context("Background operation missing")?;
+            let action = background_operation.into_inner().next().context("Background action missing")?;
+            
+            ensure!(action.as_rule() == Rule::background_action,
+                "Expected background action, found {:?}", action.as_rule());
+            
+            let def = action.into_inner().next().context("Invalid background action")?;
+            
+            let operation = match def.as_rule() {
+                Rule::background_change_def => {
+                    let target = def.into_inner().next()
+                        .context("Background - Missing change operation target")?
+                        .as_str().trim_matches('"').to_owned();
+                    BackgroundOperation::ChangeTo(target)
+                },
+                Rule::background_dissolve_def => {
+                    let target = match def.into_inner().next() {
+                        Some(rule) => Some(rule.as_str().trim_matches('"').to_owned()),
+                        None => None
+                    };
+                    BackgroundOperation::DissolveTo(target)
+                },
+                Rule::background_slide_def => {
+                    let direction_rule = def.into_inner().next().context("Background direction missing")?;
+                    ensure!(direction_rule.as_rule() == Rule::background_direction,
+                        "Expected background direction, found {:?}", direction_rule);
+                    
+                    let direction = match direction_rule.as_str() {
+                        "N" | "North" => BackgroundDirection::North,
+                        "S" | "South" => BackgroundDirection::South,
+                        "E" | "East" => BackgroundDirection::East,
+                        "W" | "West" => BackgroundDirection::West,
+                        other => bail!("Unidentified direction {}", other)
+                    };
+                    BackgroundOperation::SlideTo(direction)
+                },
+                _ => { bail!("Invalid background action"); }
+            };
+             
+            StageCommand::BackgroundChange { operation }
         },
         Rule::gui_change => {
             let mut inner = command_pair.into_inner();
