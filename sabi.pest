@@ -14,7 +14,7 @@ statement = _{
     code |
     stage_command |
     dialogue
-    }
+}
 
 // Stage directions
 stage_command = { "(" ~ stage_command_type ~ ")" }
@@ -25,40 +25,42 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
         act_change |
         character_change }
     gui_change = { "GUI" ~ gui_element ~ "changes" ~ "to" ~ expr }
-    background_change = { "Background" ~ "changes" ~ "to" ~ expr }
+    background_change = { background_directive }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
-    code_statement = _{ log }
-    // Writes a message to the console
-    log = { "log " ~ expr+ }
+code_statement = _{ log }
+// Writes a message to the console
+log = { "log " ~ expr+ }
 
 // Makes a character or the MC say something
 dialogue = { character_identifier ~ ": " ~ dialogue_emotion_change? ~ expr ~ (expr | stage_command)* }
-    dialogue_emotion_change = { "(" ~ emotion_name ~ ")" }
+dialogue_emotion_change = { "(" ~ emotion_name ~ ")" }
 
 // Expressions
 expr = { term ~ (infix_op ~ term)* }
-    term = _{
-        string |
-        number |
-        "(" ~ expr ~ ")"
-        }
-    infix_op = _{ add }
-    add = { "+" }
+term = _{
+    string |
+    number |
+    "(" ~ expr ~ ")"
+    }
+infix_op = _{ add }
+add = { "+" }
 
 // General types
 character_identifier = {
     mc_identifier |
     character_name
-    }
+}
 character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
 gui_element = { "textbox" | "namebox" }
+
+// Character definitions
 character_spawn_directive = {
                                 "appears" |
                                 "disappears" |
@@ -77,12 +79,32 @@ character_position = {
                         "invisible left" |
                         "invisible right"
                      }
-
-character_action = {
-                       (character_spawn_directive ~ character_position? ~ emotion_name?) |
-                       (character_direction_directive ~ character_direction) |
-                       (character_movement_directive ~ character_position)
-                   }
+character_action =  {
+                        (character_spawn_directive ~ character_position? ~ emotion_name?) |
+                        (character_direction_directive ~ character_direction) |
+                        (character_movement_directive ~ character_position)
+                    }
+                   
+// Background definitions
+background_directive = { "Background" ~ background_action }
+background_action = {
+                        background_change_def |
+                        background_dissolve_def |
+                        background_slide_def
+                    }
+background_change_def   = { ("changes" ~ "to" ~ expr) }
+background_dissolve_def = { ("dissolves" ~ ("to" ~ expr)?) }
+background_slide_def    = { ("slides" ~ "to" ~ background_direction) }
+background_direction    = {
+                              "North" |
+                              "N" |
+                              "South" |
+                              "S" |
+                              "East" |
+                              "E" |
+                              "West" |
+                              "W"
+                          }
 
 // Intrinsic types
 number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }

@@ -1,4 +1,4 @@
-pub mod controller;
+pub(crate) mod controller;
 
-pub use controller::BackgroundController;
-pub use controller::BackgroundChangeMessage;
+pub(crate) use controller::BackgroundController;
+pub(crate) use controller::BackgroundChangeMessage;
