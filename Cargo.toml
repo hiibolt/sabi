@@ -12,7 +12,8 @@ crate-type = ["rlib"]
 
 [dependencies]
 anyhow = "1.0"
-bevy = "0.17.1"
+bevy = "0.17"
+bevy_ui_widgets = "0.17"
 json = "0.12.4"
 lazy_static = "1.4"
 pest = "2.8.3"

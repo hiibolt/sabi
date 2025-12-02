@@ -8,6 +8,8 @@ use anyhow::Context;
 use crate::VisualNovelState;
 use crate::compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot};
 
+const BACKGROUND_Z_INDEX: i32 = 1;
+
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
 enum BackgroundControllerState {
@@ -126,12 +128,13 @@ fn check_loading_state(
                 commands.entity(ui_root.entity()).with_child((
                     ImageNode::default(),
                     Node {
-                        width: Val::Percent(100.),
-                        height: Val::Percent(100.),
+                        width: percent(100.),
+                        height: percent(100.),
                         position_type: PositionType::Absolute,
                         ..default()
                     },
                     Transform::default(),
+                    ZIndex(BACKGROUND_Z_INDEX),
                     BackgroundNode,
                     DespawnOnEnter(SabiState::Idle),
                 ));
