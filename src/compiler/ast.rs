@@ -1,10 +1,14 @@
-use std::{collections::HashMap, iter::Peekable};
-use bevy::{asset::Asset, reflect::TypePath};
+use std::iter::Peekable;
 use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::{background::controller::{BackgroundDirection, BackgroundOperation}, character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}}, chat::controller::GuiChangeTarget};
+use crate::{
+    Act, StatementsReader,
+    background::controller::{BackgroundDirection, BackgroundOperation},
+    character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}},
+    chat::controller::{GuiChangeTarget, GuiImageMode}
+};
 
 #[derive(Parser)]
 #[grammar = "../sabi.pest"]
@@ -36,9 +40,8 @@ impl Evaluate for Expr {
     fn evaluate_into_string(&self) -> Result<String> {
         let evaluated = self.evaluate()
             .context("Failed to evaluate expression")?;
-        let res = expr_to_string(&evaluated)
-            .context("Failed to convert evaluated expression to string");
-        res
+        expr_to_string(&evaluated)
+            .context("Failed to convert evaluated expression to string")
     }
     fn evaluate(&self) -> Result<Expr> {
         match self {
@@ -82,12 +85,6 @@ pub(crate) fn expr_to_string(expr: &Expr) -> Result<String> {
             expr_to_string(&evaluated)
         }
     }
-}
-
-#[derive(Debug, Clone, Default, Asset, TypePath)]
-pub(crate) struct Act {
-    pub scenes: HashMap<String, Box<Scene>>,
-    pub entrypoint: String,
 }
 
 #[derive(Debug, Clone)]

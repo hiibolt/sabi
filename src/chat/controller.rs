@@ -1,4 +1,4 @@
-use crate::{VisualNovelState, chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
+use crate::{VisualNovelState, chat::ui_provider::{backplate_container, history_panel, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
 use std::collections::HashMap;
 use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch};
@@ -114,14 +114,28 @@ impl Plugin for ChatController {
             .add_systems(Update, wait_trigger.run_if(in_state(ChatControllerState::Idle)))
             .add_systems(OnEnter(ChatControllerState::Running), spawn_chatbox)
             .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)))
+            .add_observer(button_clicked_history_state)
             .add_observer(button_clicked_default_state);
+    }
+}   
+fn button_clicked_history_state(
+    trigger: On<Activate>,
+    mut commands: Commands,
+    q_buttons: Query<(Entity, &UiButtons)>,
+    current_sub_state: Res<State<ChatControllerSubState>>,
+    mut sub_state: ResMut<NextState<ChatControllerSubState>>,
+    history_panel: Single<Entity, With<HistoryPanel>>,    
+) -> Result<(), BevyError> {
+    
+    if *current_sub_state != ChatControllerSubState::History {
+        return Ok(())
     }
     
     let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
     match entity.1 {
         UiButtons::ExitHistory => {
             warn!("Exit history clicked");
-            commands.entity(*q_history_panel.context("History panel is not present")?).despawn();
+            commands.entity(*history_panel).despawn();
             sub_state.set(ChatControllerSubState::Default);
         },
         _ => {}
@@ -139,7 +153,13 @@ fn button_clicked_default_state(
     q_buttons: Query<(Entity, &UiButtons)>,
     current_plate: Res<CurrentTextBoxBackground>,
     asset_server: Res<AssetServer>,
+    current_sub_state: Res<State<ChatControllerSubState>>,
+    mut sub_state: ResMut<NextState<ChatControllerSubState>>,
 ) -> Result<(), BevyError> {
+    
+    if *current_sub_state != ChatControllerSubState::Default {
+        return Ok(())
+    }
     
     let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
     match entity.1 {

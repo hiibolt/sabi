@@ -1,7 +1,12 @@
-use anyhow::Context;
 use bevy::{color::palettes::css::{BLUE, GRAY, GREEN, PURPLE, RED}, ecs::relationship::RelatedSpawner, prelude::*};
 use bevy_ui_widgets::{Button, CoreScrollbarThumb, Scrollbar};
-use crate::{VisualNovelState, chat::{GUIScrollText, controller::{CurrentTextBoxBackground, InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands}}, compiler::{ast::{Evaluate, Statement}, controller::SabiState}};
+use crate::{
+    VisualNovelState,
+    chat::{GUIScrollText,
+        controller::{CurrentTextBoxBackground, HistoryPanel, HistoryScrollbar, HistoryText, InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands}
+    },
+    compiler::controller::SabiState
+};
 
 const UI_Z_INDEX: i32 = 4;
 
@@ -179,4 +184,145 @@ fn history_button() -> impl Bundle {
             TextShadow::default(),
         ],
     )
+}
+
+fn history_exit_button() -> impl Bundle {
+    (
+        Node {
+            position_type: PositionType::Absolute,
+            right: percent(2.),
+            top: percent(2.),
+            border: UiRect::all(px(2)),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            padding: UiRect { left: px(5), right: px(5), top: px(3), bottom: px(3) },
+            ..default()
+        },
+        BorderColor::all(Color::WHITE),
+        BorderRadius::MAX,
+        BackgroundColor(Color::Srgba(BLUE)),
+        UiButtons::ExitHistory,
+        Button,
+        children![
+            Text::new("Close"),
+            TextShadow::default(),
+        ],
+    )
+}
+
+pub(crate) fn history_panel(
+    current_plate: Res<CurrentTextBoxBackground>,
+    game_state: &ResMut<VisualNovelState>,
+    asset_server: &Res<AssetServer>,
+) -> Result<impl Bundle, BevyError> {
+    
+    let history_text = history_text(asset_server, game_state)?;
+    
+    Ok((
+        ImageNode {
+            image: current_plate.0.image.clone(),
+            image_mode: current_plate.0.image_mode.clone(),
+            ..default()
+        },
+        Node {
+            position_type: PositionType::Absolute,
+            width: percent(70.),
+            height: percent(65.),
+            top: percent(3.),
+            display: Display::Flex,
+            justify_content: JustifyContent::Center,
+            padding: UiRect {
+                top: percent(2.),
+                bottom: percent(2.),
+                ..UiRect::horizontal(percent(4.))
+            },
+            ..default()
+        },
+        ZIndex(UI_Z_INDEX),
+        HistoryPanel,
+        Children::spawn(
+            SpawnWith(|parent: &mut RelatedSpawner<ChildOf>| {
+                let scroll_area_id = parent.spawn((
+                    history_text,
+                )).id();
+                parent.spawn(scrollbar(scroll_area_id));
+                parent.spawn(history_exit_button());
+            })
+        ),
+    ))
+}
+
+fn scrollbar(entity: Entity) -> impl Bundle {
+    (
+        Node {
+            min_width: px(8.),
+            ..default()
+        },
+        Scrollbar {
+            orientation: bevy_ui_widgets::ControlOrientation::Vertical,
+            target: entity,
+            min_thumb_length: 8.,
+        },
+        HistoryScrollbar,
+        children![
+            (
+                Node {
+                    position_type: PositionType::Absolute,
+                    ..default()
+                },
+                BackgroundColor(GRAY.into()),
+                BorderRadius::all(px(4.)),
+                CoreScrollbarThumb,
+            )
+        ]
+    )
+}
+
+fn history_text(asset_server: &Res<AssetServer>, game_state: &ResMut<VisualNovelState>) -> Result<impl Bundle, BevyError> {
+    let mut history: Vec<String> = Vec::new();
+    // history.push(String::from("Act: ") + game_state.current_act.name.as_str());
+    // for scene in &game_state.current_act.scenes_reader.scenes {
+    //     let scene_name = game_state.current_act.current().context("No scene found")?.name;
+    //     history.push(string::from("scene: ") + scene_name.as_str() + "\n");
+    //     for (index, statement) in scene.statements.iter().enumerate() {
+    //         if index >= game_state.statements_reader.current_index() {
+    //             continue;
+    //         }
+    //         if let statement::dialogue(d) = statement {
+    //             let string = format!("{}: {}\n", d.character,
+    //                                 d.dialogue.evaluate_into_string().context("unable to retrieve history line")?);
+    //             history.push(string);
+    //         }
+    //     }
+    //     history.push("\n".into());
+    //     if scene_name == game_state.scene.name {
+    //         break;
+    //     }
+    // }
+    let history_text = history.join("\n");
+    let font_handle = asset_server.load("fonts/ALLER.ttf");
+    Ok((
+        Node {
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            width: percent(100.),
+            height: percent(100.),
+            overflow: Overflow::scroll_y(),
+            flex_shrink: 0.,
+            ..default()
+        },
+        children![
+            (
+                Text(history_text),
+                TextFont {
+                    font: font_handle,
+                    font_size: 14.,
+                    ..default()
+                },
+            )
+        ],
+        ZIndex(UI_Z_INDEX),
+        ScrollPosition(Vec2::new(0., 0.)),
+        HistoryText
+    ))
 }
