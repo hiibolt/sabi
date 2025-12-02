@@ -1,18 +1,20 @@
-use crate::{VisualNovelState, chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage, UiRoot}};
+use crate::{VisualNovelState, chat::ui_provider::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
 use std::collections::HashMap;
 use anyhow::Context;
-use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch, ui::RelativeCursorPosition};
+use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch};
+use bevy_ui_widgets::{Activate, UiWidgetsPlugins};
 
 /* Messages */
 #[derive(Message)]
-pub struct CharacterSayMessage {
+pub(crate) struct CharacterSayMessage {
     pub name: String,
     pub message: String
 }
 #[derive(Message)]
-pub struct GUIChangeMessage {
+pub(crate) struct GUIChangeMessage {
     pub gui_target: GuiChangeTarget,
-    pub sprite_id: String
+    pub sprite_id: String,
+    pub image_mode: GuiImageMode,
 }
 
 /* States */
@@ -36,38 +38,56 @@ impl From<SabiState> for ChatControllerState {
 
 /* Components */
 #[derive(Component, Default)]
-pub struct GUIScrollText {
+pub(crate) struct GUIScrollText {
     pub message: String
 }
 #[derive(Component)]
-pub struct VNContainer;
+pub(crate) struct VNContainer;
 #[derive(Component)]
-pub struct TextBoxBackground;
+pub(crate) struct TextBoxBackground;
 #[derive(Component)]
-pub struct NameBoxBackground;
+pub(crate) struct NameBoxBackground;
 #[derive(Component)]
-pub struct NameText;
+pub(crate) struct NameText;
 #[derive(Component)]
-pub struct MessageText;
+pub(crate) struct MessageText;
 #[derive(Component)]
-pub struct InfoText;
+pub(crate) struct InfoText;
+#[derive(Component)]
+pub(crate) struct VnCommands;
+#[derive(Component)]
 
 /* Resources */
 #[derive(Resource)]
-pub struct ChatScrollStopwatch(Stopwatch);
+pub(crate) struct ChatScrollStopwatch(Stopwatch);
 #[derive(Resource)]
 struct HandleToGuiFolder(Handle<LoadedFolder>);
 #[derive(Resource)]
 struct GuiImages(HashMap<String, Handle<Image>>);
+#[derive(Resource)]
+pub(crate) struct CurrentTextBoxBackground(pub ImageNode);
 
 /* Custom types */
 #[derive(Debug, Clone)]
-pub enum GuiChangeTarget {
+pub(crate) enum GuiChangeTarget {
     TextBoxBackground,
     NameBoxBackground,
 }
+#[derive(Debug, Clone, Default)]
+pub(crate) enum GuiImageMode {
+    Sliced,
+    #[default]
+    Auto
+}
+#[derive(Hash, Eq, PartialEq, Component, Clone, Debug)]
+pub(crate) enum UiButtons {
+    OpenHistory,
+    ExitHistory,
+    Rewind,
+    TextBox,
+}
 
-pub struct ChatController;
+pub(crate) struct ChatController;
 impl Plugin for ChatController {
     fn build(&self, app: &mut App){
         app.insert_resource(ChatScrollStopwatch(Stopwatch::new()))
@@ -76,10 +96,64 @@ impl Plugin for ChatController {
             .add_systems(Update, setup.run_if(in_state(ChatControllerState::Loading)))
             .add_message::<CharacterSayMessage>()
             .add_message::<GUIChangeMessage>()
+            .add_plugins(UiWidgetsPlugins)
             .add_systems(Update, wait_trigger.run_if(in_state(ChatControllerState::Idle)))
             .add_systems(OnEnter(ChatControllerState::Running), spawn_chatbox)
-            .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)));
+            .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)))
+            .add_observer(button_clicked_default_state);
     }
+}
+fn button_clicked_default_state(
+    trigger: On<Activate>,
+    mut commands: Commands,
+    vncontainer_visibility: Single<&mut Visibility, With<VNContainer>>,
+    scroll_stopwatch: ResMut<ChatScrollStopwatch>,
+    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>)>,
+    mut game_state: ResMut<VisualNovelState>,
+    ui_root: Single<Entity, With<UiRoot>>,
+    q_buttons: Query<(Entity, &UiButtons)>,
+    current_plate: Res<CurrentTextBoxBackground>,
+    asset_server: Res<AssetServer>,
+) -> Result<(), BevyError> {
+    
+    let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
+    match entity.1 {
+        UiButtons::OpenHistory => {
+            warn!("Open history clicked");
+        },
+        UiButtons::Rewind => {
+            warn!("Rewind button clicked!");
+        },
+        UiButtons::TextBox => {
+            warn!("Textbox history clicked");
+            textbox_clicked(vncontainer_visibility, scroll_stopwatch, message_text, game_state)?
+        },
+        _ => {}
+    }
+    
+    Ok(())
+}
+fn textbox_clicked(
+    mut vncontainer_visibility: Single<&mut Visibility, With<VNContainer>>,
+    mut scroll_stopwatch: ResMut<ChatScrollStopwatch>,
+    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>)>,
+    mut game_state: ResMut<VisualNovelState>,
+) -> Result<(), BevyError> {
+    
+    let length: u32 = (scroll_stopwatch.0.elapsed_secs() * 50.) as u32;
+    if length < message_text.0.message.len() as u32 {
+        // Skip message scrolling
+        scroll_stopwatch.0.set_elapsed(std::time::Duration::from_secs_f32(100000000.));
+        return Ok(());
+    }
+    println!("[ Player finished message ]");
+
+    // Hide textbox parent object
+    **vncontainer_visibility = Visibility::Hidden;
+
+    // Allow transitions to be run again
+    game_state.blocking = false;
+    Ok(())
 }
 fn setup(
     mut commands: Commands,
@@ -156,6 +230,10 @@ fn spawn_chatbox(
     let messagetext = commands.spawn(messagetext(&asset_server)).id();
     commands.entity(textbox_bg).add_child(messagetext);
     
+    // VN commands
+    let vn_commands = commands.spawn(vn_commands()).id();
+    commands.entity(textbox_bg).add_child(vn_commands);
+    
     // InfoText
     commands.spawn(infotext(&asset_server));
 }
@@ -167,9 +245,6 @@ fn update_chatbox(
     mut scroll_stopwatch: ResMut<ChatScrollStopwatch>,
     mut game_state: ResMut<VisualNovelState>,
     time: Res<Time>,
-    relative_cursor: Single<&RelativeCursorPosition>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mouse_input: Res<ButtonInput<MouseButton>>,
 ) -> Result<(), BevyError> {
     // Tick clock
     let to_tick = if time.delta_secs() > 1. { std::time::Duration::from_secs_f32(0.) } else { time.delta() };
@@ -204,21 +279,6 @@ fn update_chatbox(
     // Return the section and apply it to the text object
     original_string.truncate(length as usize);
     message_text.1.0 = original_string;
-
-    if (mouse_input.just_pressed(MouseButton::Left) && relative_cursor.cursor_over()) || keyboard_input.just_pressed(KeyCode::Space) {
-        if length < message_text.0.message.len() as u32 {
-            // Skip message scrolling
-            scroll_stopwatch.0.set_elapsed(std::time::Duration::from_secs_f32(100000000.));
-            return Ok(());
-        }
-        println!("[ Player finished message ]");
-
-        // Hide textbox parent object
-        *vncontainer_visibility = Visibility::Hidden;
-
-        // Allow transitions to be run again
-        game_state.blocking = false;
-    }
     
     Ok(())
 }
@@ -231,22 +291,52 @@ fn wait_trigger(
     }
 }
 fn update_gui(
+    mut commands: Commands,
     mut change_messages: MessageReader<GUIChangeMessage>,
-    mut param_set: ParamSet<(
-        Single<&mut ImageNode, With<TextBoxBackground>>,
-        Single<&mut ImageNode, With<NameBoxBackground>>,
-    )>,
+    mut q_image_node: Query<
+        (&mut ImageNode, Has<TextBoxBackground>, Has<NameBoxBackground>),
+        Or<(With<TextBoxBackground>, With<NameBoxBackground>)>
+    >,
+    concrete_images: Res<Assets<Image>>,
     gui_images: Res<GuiImages>,
 ) -> Result<(), BevyError> {
     for ev in change_messages.read() {
         let image = gui_images.0.get(&ev.sprite_id)
-            .with_context(|| format!("GUI asset '{}' does not exist", ev.sprite_id))?;
-        let target = match ev.gui_target {
-            GuiChangeTarget::TextBoxBackground => &mut param_set.p0().image,
-            GuiChangeTarget::NameBoxBackground => &mut param_set.p1().image,
+            .context(format!("GUI asset '{}' does not exist", ev.sprite_id))?;
+        match ev.gui_target {
+            GuiChangeTarget::TextBoxBackground => {
+                let mut target = q_image_node.iter_mut().find(|q| q.1 == true)
+                    .context("Unable to find textbox")?.0;
+                target.image = image.clone();
+                target.image_mode = match ev.image_mode {
+                    GuiImageMode::Sliced => {
+                        let concrete_image = concrete_images.get(image).context("Could not find image")?;
+                        let concrete_image_size = concrete_image.texture_descriptor.size;
+                        let slice_cuts = BorderRect {
+                            top: concrete_image_size.height as f32 / 5.,
+                            bottom: concrete_image_size.height as f32 / 5.,
+                            left: concrete_image_size.width as f32 / 5.,
+                            right: concrete_image_size.width as f32 / 5.
+                        };
+                        NodeImageMode::Sliced(TextureSlicer {
+                            border: slice_cuts,
+                            center_scale_mode: SliceScaleMode::Tile { stretch_value: 1. },
+                            sides_scale_mode: SliceScaleMode::Tile { stretch_value: 1. },
+                            ..default()
+                        })
+                    },
+                    GuiImageMode::Auto => NodeImageMode::Auto
+                };
+                commands.insert_resource(CurrentTextBoxBackground(target.clone()));
+            }
+            GuiChangeTarget::NameBoxBackground => {
+                let mut target = q_image_node.iter_mut().find(|q| q.2 == true)
+                    .context("Unable to find namebox")?.0;
+                    
+                target.image = image.clone();
+            }
         };
-        *target = image.clone();
-        
     }
+    
     Ok(())
 }

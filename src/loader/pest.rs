@@ -30,6 +30,7 @@ impl AssetLoader for PestLoader {
         _settings: &Self::Settings,
         _load_context: &mut bevy::asset::LoadContext,
     ) -> impl bevy::tasks::ConditionalSendFuture<Output = std::result::Result<Self::Asset, Self::Error>> {
+        
         Box::pin(async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;

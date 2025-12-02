@@ -127,19 +127,20 @@ fn spawn_ui_root(
 ) {
     commands.spawn((
         Node {
-            width: Val::Percent(100.),
-            height: Val::Percent(100.),
+            width: percent(100.),
+            height: percent(100.),
             align_items: AlignItems::FlexEnd,
             justify_content: JustifyContent::Center,
             ..default()
         },
         BackgroundColor(Color::NONE.into()),
+        GlobalTransform::default(),
         UiRoot,
         children![
             (
                 Node {
-                    width: Val::Percent(100.),
-                    height: Val::Percent(100.),
+                    width: percent(100.),
+                    height: percent(100.),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     ..default()
@@ -155,7 +156,7 @@ fn spawn_ui_root(
                         }
                     )
                 ],
-                GlobalZIndex(100),
+                ZIndex(100),
                 DespawnOnExit(SabiState::WaitingForControllers)
             )
         ]
@@ -233,7 +234,6 @@ fn check_states(
 }
 fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut game_state: ResMut<'a, VisualNovelState>,
-    
     mut character_say_message: MessageWriter<'b, CharacterSayMessage>,
     mut background_change_message: MessageWriter<'c, BackgroundChangeMessage>,
     mut gui_change_message: MessageWriter<'d, GUIChangeMessage>,
@@ -242,8 +242,8 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
     
     mut state: ResMut<NextState<SabiState>>,
-
 ) -> Result<(), BevyError> {
+    
     if game_state.blocking {
         return Ok(());
     }
@@ -263,7 +263,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
         info!("Finished scripts!");
         state.set(SabiState::Idle);
     }
-
+    
     Ok(())
 }
 fn handle_scene_changes(

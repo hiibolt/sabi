@@ -98,7 +98,7 @@ pub(crate) enum CodeStatement {
 #[derive(Debug, Clone)]
 pub(crate) enum StageCommand {
     BackgroundChange { operation: BackgroundOperation },
-    GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr> },
+    GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr>, image_mode: GuiImageMode },
     SceneChange { scene_expr: Box<Expr> },
     ActChange { act_expr: Box<Expr> },
     CharacterChange { character: String, operation: CharacterOperation },
@@ -116,7 +116,6 @@ pub(crate) enum Statement {
     Stage(StageCommand),
     Dialogue(Dialogue)
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scene {
@@ -312,9 +311,19 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
             let sprite_expr = build_expression(sprite_expr_pair)
                 .context("Failed to build sprite expression for GUI change")?;
             
+            let image_mode = if let Some(image_mode) = inner.next() {
+                ensure!(image_mode.as_rule() == Rule::image_mode,
+                    "Expected image mode, found {:?}", image_mode.as_rule());
+                match image_mode.as_str() {
+                    "sliced" => GuiImageMode::Sliced,
+                    other => bail!("Unrecognized image mode definition: {}", other)
+                }
+            } else { GuiImageMode::Auto };
+            
             StageCommand::GUIChange { 
                 gui_target, 
-                sprite_expr: Box::new(sprite_expr) 
+                sprite_expr: Box::new(sprite_expr),
+                image_mode,
             }
         },
         Rule::scene_change => {
