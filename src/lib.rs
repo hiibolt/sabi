@@ -41,7 +41,7 @@ impl VisualNovelState {
 pub(crate) struct Act {
     pub scenes_reader: ScenesReader,
     pub name: String,
-    pub history: Vec<String>,
+    pub history: Vec<Statement>,
 }
 
 impl Act {
@@ -73,7 +73,7 @@ impl Act {
         self.scenes_reader.change_scene(scene_id)
     }
     
-    pub(crate) fn history(&self) -> Vec<String> {
+    pub(crate) fn history(&self) -> Vec<Statement> {
         self.history.clone()
     }
 }
@@ -106,7 +106,7 @@ impl ScenesReader {
     pub(crate) fn rewind_steps(&mut self) -> Result<usize, BevyError> {
         match &mut self.current() {
             Some(scene) => {
-                // TODO: if at its first statement,
+                // TODO(rewind): if at its first statement,
                 // scene needs to go backwards if possible
                 scene.statements_reader.rewind_steps()
             },
@@ -168,11 +168,11 @@ impl StatementsReader {
     }
     
     fn advance(&mut self) -> Result<(), BevyError> {
-        if self.index + 1 < self.statements.len() {
-            self.index += 1;
-            Ok(())
-        } else {
+        self.index += 1;
+        if self.index + 1 >= self.statements.len() {
             Err(BevyError::from("Scene's statements are finished"))
+        } else {
+            Ok(())
         }
     }
     
@@ -191,7 +191,7 @@ impl StatementsReader {
     }
     
     fn rewind(&mut self) {
-        self.index -= 1;
+        self.index = self.index.saturating_sub(1);
     }
     
     fn current(&self) -> Option<ast::Statement> {
