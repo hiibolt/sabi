@@ -91,13 +91,15 @@ impl ScenesReader {
                 if scene.statements_reader.advance().is_err() {
                     if self.index + 1 < self.scenes.len() {
                         self.index += 1;
+                        let scene = self.scenes.get_mut(self.index).context("No scene found")?;
+                        scene.statements_reader.index = 0;
                         Ok(())
                     } else {
                         Err(BevyError::from("Act's scenes are finished"))
                     }
                 } else { Ok(()) }
             },
-            _ => Err(BevyError::from("Here I am"))
+            _ => Err(BevyError::from("No scene is available"))
         }
     }
     
@@ -141,6 +143,9 @@ impl ScenesReader {
         match self.scenes.iter().position(|s| &s.name == scene_id) {
             Some(index) => {
                 self.index = index;
+                let scene = self.scenes.get_mut(self.index)
+                    .context("Non existent scene")?;
+                scene.statements_reader.index = 0;
                 Ok(())
             },
             None => { Err(BevyError::from(format!("Non existent scene {}", scene_id))) }
