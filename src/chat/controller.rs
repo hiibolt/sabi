@@ -26,6 +26,14 @@ pub(crate) enum ChatControllerState {
     Running,
 }
 
+#[derive(SubStates, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
+#[source(ChatControllerState = ChatControllerState::Running)]
+pub(crate) enum ChatControllerSubState {
+    #[default]
+    Default,
+    History
+}
+
 impl From<SabiState> for ChatControllerState {
     fn from(value: SabiState) -> Self {
         match value {
@@ -56,6 +64,11 @@ pub(crate) struct InfoText;
 #[derive(Component)]
 pub(crate) struct VnCommands;
 #[derive(Component)]
+pub(crate) struct HistoryPanel;
+#[derive(Component)]
+pub(crate) struct HistoryScrollbar;
+#[derive(Component)]
+pub(crate) struct HistoryText;
 
 /* Resources */
 #[derive(Resource)]
@@ -92,6 +105,7 @@ impl Plugin for ChatController {
     fn build(&self, app: &mut App){
         app.insert_resource(ChatScrollStopwatch(Stopwatch::new()))
             .init_state::<ChatControllerState>()
+            .init_state::<ChatControllerSubState>()
             .add_systems(OnEnter(ChatControllerState::Loading), import_gui_sprites)
             .add_systems(Update, setup.run_if(in_state(ChatControllerState::Loading)))
             .add_message::<CharacterSayMessage>()
@@ -102,6 +116,17 @@ impl Plugin for ChatController {
             .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)))
             .add_observer(button_clicked_default_state);
     }
+    
+    let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
+    match entity.1 {
+        UiButtons::ExitHistory => {
+            warn!("Exit history clicked");
+            commands.entity(*q_history_panel.context("History panel is not present")?).despawn();
+            sub_state.set(ChatControllerSubState::Default);
+        },
+        _ => {}
+    }
+    Ok(())
 }
 fn button_clicked_default_state(
     trigger: On<Activate>,
@@ -120,9 +145,13 @@ fn button_clicked_default_state(
     match entity.1 {
         UiButtons::OpenHistory => {
             warn!("Open history clicked");
+            let history_panel_id = commands.spawn(history_panel(current_plate, &game_state, &asset_server)?).id();
+            commands.entity(*ui_root).add_child(history_panel_id);
+            sub_state.set(ChatControllerSubState::History);
         },
         UiButtons::Rewind => {
             warn!("Rewind button clicked!");
+            game_state.set_rewind();
         },
         UiButtons::TextBox => {
             warn!("Textbox history clicked");

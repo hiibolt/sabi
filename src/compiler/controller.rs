@@ -1,8 +1,7 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
 
-use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
-use crate::compiler::ast::Act;
+use crate::{Act, BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 use std::collections::HashMap;
 use bevy::asset::{LoadState, LoadedFolder};
 use bevy::color::palettes::css::{BLACK, WHITE};
@@ -90,9 +89,6 @@ fn trigger_running_controllers(
         .context("Could not find script element")?;
     
     visual_novel_state.act = Box::new(act.clone());
-    visual_novel_state.statements = act.scenes.get(&act.entrypoint)
-        .context("Error retrieving act entrypoint")?
-        .statements.clone().into_iter();
     visual_novel_state.blocking = false;
     
     msg_writer.write(ControllersSetStateMessage(SabiState::Running));
@@ -247,8 +243,15 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     if game_state.blocking {
         return Ok(());
     }
-
-    if let Some(statement) = game_state.statements.next() {
+    
+    if game_state.rewinding > 0 {
+        game_state.act.rewind();
+        game_state.rewinding = game_state.rewinding.saturating_sub(1);
+    } else {
+        game_state.act.advance();
+    }
+    
+    if let Some(statement) = game_state.act.current() {
         statement.invoke(InvokeContext {
                 game_state: &mut game_state,
                 character_say_message: &mut character_say_message,
@@ -271,13 +274,8 @@ fn handle_scene_changes(
     mut game_state: ResMut<VisualNovelState>,
 ) -> Result<(), BevyError> {
     for msg in scene_change_messages.read() {
-        let new_scene = game_state.act.scenes.get(&msg.scene_id)
-            .with_context(|| format!("Scene '{}' not found in current act", msg.scene_id))?
-            .clone();
-        
         info!("Changing to scene: {}", msg.scene_id);
-        game_state.scene = new_scene;
-        game_state.statements = game_state.scene.statements.clone().into_iter();
+        game_state.act.change_scene(&msg.scene_id)?;
         game_state.blocking = false;
         info!("[ Scene changed to '{}' ]", msg.scene_id);
     }
@@ -293,20 +291,14 @@ fn handle_act_changes(
 ) -> Result<(), BevyError> {
     for msg in act_change_messages.read() {
         current_script.0.act = msg.act_id.clone();
-        let act_handle = scripts_resource.0.get(&current_script.0).with_context(|| format!("Could not find act handle for {}", current_script.0.act))?;
-        let act = scripts_assets.get(act_handle).with_context(|| format!("Could not find act {:?}", act_handle))?;
+        let act_handle = scripts_resource.0.get(&current_script.0).context(format!("Could not find act handle for {}", current_script.0.act))?;
+        let act = scripts_assets.get(act_handle).context(format!("Could not find act {:?}", act_handle))?;
         
         info!("Changing to act: {}", current_script.0.act);
         
-        let entrypoint_scene = act.scenes.get(&act.entrypoint)
-            .with_context(|| format!("Entrypoint scene '{}' not found in act '{}'", act.entrypoint, current_script.0.act))?
-            .clone();
-        
         game_state.act = Box::new(act.clone());
-        game_state.scene = entrypoint_scene;
-        game_state.statements = game_state.scene.statements.clone().into_iter();
         game_state.blocking = false;
-        info!("[ Act changed to '{}', starting at entrypoint scene '{}' ]", msg.act_id, act.entrypoint);
+        info!("[ Act changed to '{}' ]", msg.act_id);
     }
     
     Ok(())

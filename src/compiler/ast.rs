@@ -119,7 +119,17 @@ pub(crate) enum Statement {
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scene {
-    pub statements: Vec<Statement>
+    pub name: String,
+    pub statements_reader: StatementsReader
+}
+
+impl PartialEq for Scene {
+    fn eq(&self, other: &Self) -> bool {
+        other.name == self.name
+    }
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
 }
 
 pub(crate) fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr> {
@@ -464,11 +474,7 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
 }
 
 pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
-    let mut act = Act {
-        scenes: HashMap::new(),
-        entrypoint: String::new(),
-    };
-    let mut first_scene_id: Option<String> = None;
+    let mut act = Act::default();
     
     for scene_pair in pair.into_inner() {
         match scene_pair.as_rule() {
@@ -479,11 +485,6 @@ pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
                     .context("Scene missing ID")?
                     .as_str()
                     .to_owned();
-                
-                // Set the first scene as entrypoint
-                if first_scene_id.is_none() {
-                    first_scene_id = Some(scene_id.clone());
-                }
                 
                 let mut statements = Vec::new();
                 for statement_pair in inner_rules {
@@ -504,13 +505,18 @@ pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
                     statements.push(stmt);
                 }
                 
-                ensure!(act.scenes.insert(scene_id.clone(), Box::new(Scene { statements })).is_none(), "Duplicate scene ID '{}'", scene_id);
+                ensure!(act.contains_scene(&scene_id) == false, "Duplicate scene ID '{}'", scene_id);
+                
+                let scene = Scene {
+                    name: scene_id,
+                    statements_reader: StatementsReader::new(statements)
+                };
+                act.add_scene(scene);
             },
             Rule::EOI => continue,
             other => bail!("Unexpected rule when parsing scenes: {:?}", other),
         }
     }
     
-    act.entrypoint = first_scene_id.context("No scenes found in act")?;
     Ok(act)
 }
