@@ -92,7 +92,7 @@ impl ScenesReader {
                     if self.index + 1 < self.scenes.len() {
                         self.index += 1;
                         let scene = self.scenes.get_mut(self.index).context("No scene found")?;
-                        scene.statements_reader.index = 0;
+                        scene.statements_reader.index = None;
                         Ok(())
                     } else {
                         Err(BevyError::from("Act's scenes are finished"))
@@ -145,7 +145,7 @@ impl ScenesReader {
                 self.index = index;
                 let scene = self.scenes.get_mut(self.index)
                     .context("Non existent scene")?;
-                scene.statements_reader.index = 0;
+                scene.statements_reader.index = None;
                 Ok(())
             },
             None => { Err(BevyError::from(format!("Non existent scene {}", scene_id))) }
@@ -156,46 +156,56 @@ impl ScenesReader {
 #[derive(Default, Debug, Clone)]
 pub(crate) struct StatementsReader {
     statements: Vec<ast::Statement>,
-    index: usize,
+    index: Option<usize>,
 }
 
 impl StatementsReader {
     fn new(vec: Vec<ast::Statement>) -> Self {
         Self {
             statements: vec,
-            index: 0,
+            index: None,
         }
     }
     
     fn advance(&mut self) -> Result<(), BevyError> {
-        self.index += 1;
-        if self.index + 1 >= self.statements.len() {
-            Err(BevyError::from("Scene's statements are finished"))
-        } else {
-            Ok(())
-        }
+        self.index = match self.index {
+            None => Some(0),
+            Some(v) => {
+                if v + 1 >= self.statements.len() {
+                    return Err(BevyError::from("Scene's statements are finished"));
+                }
+                Some(v + 1) 
+            }
+        };
+        
+        Ok(())
     }
     
     fn rewind_steps(&self) -> Result<usize, BevyError> {
-        if self.index != 0 {
-            let search_slice = &self.statements[..self.index];
-            let steps = search_slice
-                .iter()
-                .rposition(|s| { matches!(s, Statement::Dialogue(_)) })
-                .map(|pos| self.index - pos)
-                .context("Cannot rewind: scene is at its first statement")?;
-            Ok(steps)
-        } else {
-            Err(BevyError::from("Cannot rewind: scene is at its first statement"))
+        match self.index {
+            Some(v) if v > 0 => {
+                let search_slice = &self.statements[..v];
+                let steps = search_slice
+                    .iter()
+                    .rposition(|s| { matches!(s, Statement::Dialogue(_)) })
+                    .map(|pos| v - pos)
+                    .context("Cannot rewind: scene is at its first statement")?;
+                Ok(steps)
+            },
+            _ => Err(BevyError::from("Cannot rewind: scene is at its first statement"))
         }
     }
     
     fn rewind(&mut self) {
-        self.index = self.index.saturating_sub(1);
+        if let Some(index) = &mut self.index {
+            *index = index.saturating_sub(1);
+        }
     }
     
     fn current(&self) -> Option<ast::Statement> {
-        self.statements.get(self.index).cloned()
+        if let Some(index) = self.index {
+            self.statements.get(index).cloned()
+        } else { None }
     }
 }
 
