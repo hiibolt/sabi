@@ -4,15 +4,15 @@ mod chat;
 mod compiler;
 mod loader;
 
+use std::vec::IntoIter;
+
 use crate::background::*;
 use crate::character::*;
 use crate::chat::*;
-use crate::compiler::ast::Statement;
 use crate::compiler::*;
 use crate::loader::CharacterJsonLoader;
 use crate::loader::PestLoader;
 
-use anyhow::Context;
 use bevy::prelude::*;
 use bevy::ecs::error::ErrorContext;
 
@@ -23,190 +23,12 @@ pub(crate) struct VisualNovelState {
     // Player-designated constants
     playername: String,
 
-    pub act: Box<Act>,
+    pub act: Box<ast::Act>,
+    pub scene: Box<ast::Scene>,
+    pub statements: IntoIter<ast::Statement>,
     blocking: bool,
     pub rewinding: usize,
-}
-
-impl VisualNovelState {
-    fn set_rewind(&mut self) {
-        if let Ok(steps) = self.act.rewind_steps() {
-            self.rewinding = steps;
-            self.blocking = false;
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, Asset, TypePath)]
-pub(crate) struct Act {
-    pub scenes_reader: ScenesReader,
-    pub name: String,
-    pub history: Vec<Statement>,
-}
-
-impl Act {
-    pub(crate) fn contains_scene(&self, scene_id: &str) -> bool {
-        self.scenes_reader.scenes.iter().find(|s| s.name == scene_id).is_some()
-    }
-    
-    pub(crate) fn rewind_steps(&mut self) -> Result<usize, BevyError> {
-        self.scenes_reader.rewind_steps()
-    }
-    
-    pub(crate) fn rewind(&mut self) {
-        self.scenes_reader.rewind();
-    }
-    
-    pub(crate) fn advance(&mut self) {
-        let _ = self.scenes_reader.advance();
-    }
-    
-    pub(crate) fn current(&self) -> Option<ast::Statement> {
-        self.scenes_reader.current_statement()
-    }
-    
-    pub(crate) fn add_scene(&mut self, scene: ast::Scene) {
-        self.scenes_reader.add_scene(scene);
-    }
-    
-    pub(crate) fn change_scene(&mut self, scene_id: &str) -> Result<(), BevyError> {
-        self.scenes_reader.change_scene(scene_id)
-    }
-    
-    pub(crate) fn history(&self) -> Vec<Statement> {
-        self.history.clone()
-    }
-}
-
-#[derive(Default, Debug, Clone)]
-pub(crate) struct ScenesReader {
-    pub scenes: Vec<ast::Scene>,
-    index: usize,
-}
-
-impl ScenesReader {
-   fn advance(&mut self) -> Result<(), BevyError> {
-        match self.current_mut() {
-            Some(scene) => {
-                if scene.statements_reader.advance().is_err() {
-                    if self.index + 1 < self.scenes.len() {
-                        self.index += 1;
-                        let scene = self.scenes.get_mut(self.index).context("No scene found")?;
-                        scene.statements_reader.index = None;
-                        Ok(())
-                    } else {
-                        Err(BevyError::from("Act's scenes are finished"))
-                    }
-                } else { Ok(()) }
-            },
-            _ => Err(BevyError::from("No scene is available"))
-        }
-    }
-    
-    pub(crate) fn rewind_steps(&mut self) -> Result<usize, BevyError> {
-        match &mut self.current() {
-            Some(scene) => {
-                // TODO(rewind): if at its first statement,
-                // scene needs to go backwards if possible
-                scene.statements_reader.rewind_steps()
-            },
-            _ => { Err(BevyError::from("No scene available!")) }
-        }
-    }
-    
-    pub(crate) fn rewind(&mut self) {
-        if let Some(scene) = self.current_mut() {
-            scene.statements_reader.rewind();
-        }
-    }
-    
-    pub(crate) fn current(&self) -> Option<&ast::Scene> {
-        self.scenes.get(self.index)
-    }
-    
-    fn current_mut(&mut self) -> Option<&mut ast::Scene> {
-        self.scenes.get_mut(self.index)
-    }
-    
-    pub(crate) fn current_statement(&self) -> Option<ast::Statement> {
-        match self.current() {
-            Some(scene) => scene.statements_reader.current(),
-            None => None
-        }
-    }
-    
-    pub(crate) fn add_scene(&mut self, scene: ast::Scene) {
-        self.scenes.push(scene);
-    }
-    
-    pub(crate) fn change_scene(&mut self, scene_id: &str) -> Result<(), BevyError> {
-        match self.scenes.iter().position(|s| &s.name == scene_id) {
-            Some(index) => {
-                self.index = index;
-                let scene = self.scenes.get_mut(self.index)
-                    .context("Non existent scene")?;
-                scene.statements_reader.index = None;
-                Ok(())
-            },
-            None => { Err(BevyError::from(format!("Non existent scene {}", scene_id))) }
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone)]
-pub(crate) struct StatementsReader {
-    statements: Vec<ast::Statement>,
-    index: Option<usize>,
-}
-
-impl StatementsReader {
-    fn new(vec: Vec<ast::Statement>) -> Self {
-        Self {
-            statements: vec,
-            index: None,
-        }
-    }
-    
-    fn advance(&mut self) -> Result<(), BevyError> {
-        self.index = match self.index {
-            None => Some(0),
-            Some(v) => {
-                if v + 1 >= self.statements.len() {
-                    return Err(BevyError::from("Scene's statements are finished"));
-                }
-                Some(v + 1) 
-            }
-        };
-        
-        Ok(())
-    }
-    
-    fn rewind_steps(&self) -> Result<usize, BevyError> {
-        match self.index {
-            Some(v) if v > 0 => {
-                let search_slice = &self.statements[..v];
-                let steps = search_slice
-                    .iter()
-                    .rposition(|s| { matches!(s, Statement::Dialogue(_)) })
-                    .map(|pos| v - pos)
-                    .context("Cannot rewind: scene is at its first statement")?;
-                Ok(steps)
-            },
-            _ => Err(BevyError::from("Cannot rewind: scene is at its first statement"))
-        }
-    }
-    
-    fn rewind(&mut self) {
-        if let Some(index) = &mut self.index {
-            *index = index.saturating_sub(1);
-        }
-    }
-    
-    fn current(&self) -> Option<ast::Statement> {
-        if let Some(index) = self.index {
-            self.statements.get(index).cloned()
-        } else { None }
-    }
+    pub history: Vec<ast::Statement>,
 }
 
 #[derive(Resource, Default)]
@@ -234,7 +56,7 @@ impl Plugin for SabiPlugin {
             .init_resource::<VisualNovelState>()
             .init_asset::<CharacterConfig>()
             .init_asset_loader::<CharacterJsonLoader>()
-            .init_asset::<Act>()
+            .init_asset::<ast::Act>()
             .init_asset_loader::<PestLoader>()
             .set_error_handler(sabi_error_handler)
             .add_plugins((

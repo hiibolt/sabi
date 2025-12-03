@@ -3,7 +3,7 @@ use bevy::asset::AssetLoader;
 use pest::Parser;
 use thiserror::Error;
 
-use crate::{Act, compiler::ast::{Rule, SabiParser, build_scenes}};
+use crate::{compiler::ast::{Act, Rule, SabiParser, build_scenes}};
 
 #[derive(Debug, Error)]
 pub(crate) enum PestLoaderError {
@@ -30,7 +30,7 @@ impl AssetLoader for PestLoader {
         _settings: &Self::Settings,
         load_context: &mut bevy::asset::LoadContext,
     ) -> impl bevy::tasks::ConditionalSendFuture<Output = std::result::Result<Self::Asset, Self::Error>> {
-        
+
         Box::pin(async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
@@ -43,7 +43,7 @@ impl AssetLoader for PestLoader {
             Ok(act)
         })
     }
-    
+
     fn extensions(&self) -> &[&str] {
         &["sabi"]
     }

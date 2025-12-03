@@ -117,20 +117,20 @@ impl Plugin for ChatController {
             .add_observer(button_clicked_history_state)
             .add_observer(button_clicked_default_state);
     }
-}   
+}
 fn button_clicked_history_state(
     trigger: On<Activate>,
     mut commands: Commands,
     q_buttons: Query<(Entity, &UiButtons)>,
     current_sub_state: Res<State<ChatControllerSubState>>,
     mut sub_state: ResMut<NextState<ChatControllerSubState>>,
-    history_panel: Single<Entity, With<HistoryPanel>>,    
+    history_panel: Single<Entity, With<HistoryPanel>>,
 ) -> Result<(), BevyError> {
-    
+
     if *current_sub_state != ChatControllerSubState::History {
         return Ok(())
     }
-    
+
     let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
     match entity.1 {
         UiButtons::ExitHistory => {
@@ -156,11 +156,11 @@ fn button_clicked_default_state(
     current_sub_state: Res<State<ChatControllerSubState>>,
     mut sub_state: ResMut<NextState<ChatControllerSubState>>,
 ) -> Result<(), BevyError> {
-    
+
     if *current_sub_state != ChatControllerSubState::Default {
         return Ok(())
     }
-    
+
     let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
     match entity.1 {
         UiButtons::OpenHistory => {
@@ -171,7 +171,7 @@ fn button_clicked_default_state(
         },
         UiButtons::Rewind => {
             warn!("Rewind button clicked!");
-            game_state.set_rewind();
+            // game_state.set_rewind();
         },
         UiButtons::TextBox => {
             warn!("Textbox history clicked");
@@ -179,7 +179,7 @@ fn button_clicked_default_state(
         },
         _ => {}
     }
-    
+
     Ok(())
 }
 fn textbox_clicked(
@@ -188,7 +188,7 @@ fn textbox_clicked(
     message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>)>,
     mut game_state: ResMut<VisualNovelState>,
 ) -> Result<(), BevyError> {
-    
+
     let length: u32 = (scroll_stopwatch.0.elapsed_secs() * 50.) as u32;
     if length < message_text.0.message.len() as u32 {
         // Skip message scrolling
@@ -253,36 +253,36 @@ fn spawn_chatbox(
     ui_root: Single<Entity, With<UiRoot>>,
 ){
     // Todo: add despawn of ui elements
-    
+
     // Spawn Backplate + Nameplate
     // Container
     let container = commands.spawn(backplate_container()).id();
     commands.entity(ui_root.entity()).add_child(container);
-    
+
     // Top section: Nameplate flex container
     let top_section = commands.spawn(top_section()).id();
     commands.entity(container).add_child(top_section);
-    
+
     // Namebox Node
     let namebox = commands.spawn(namebox()).id();
     commands.entity(top_section).add_child(namebox);
-    
+
     // NameText
     let nametext = commands.spawn(nametext(&asset_server)).id();
     commands.entity(namebox).add_child(nametext);
-    
+
     // Backplate Node
     let textbox_bg = commands.spawn(textbox()).id();
     commands.entity(container).add_child(textbox_bg);
-    
+
     // MessageText
     let messagetext = commands.spawn(messagetext(&asset_server)).id();
     commands.entity(textbox_bg).add_child(messagetext);
-    
+
     // VN commands
     let vn_commands = commands.spawn(vn_commands()).id();
     commands.entity(textbox_bg).add_child(vn_commands);
-    
+
     // InfoText
     commands.spawn(infotext(&asset_server));
 }
@@ -328,7 +328,7 @@ fn update_chatbox(
     // Return the section and apply it to the text object
     original_string.truncate(length as usize);
     message_text.1.0 = original_string;
-    
+
     Ok(())
 }
 fn wait_trigger(
@@ -381,11 +381,11 @@ fn update_gui(
             GuiChangeTarget::NameBoxBackground => {
                 let mut target = q_image_node.iter_mut().find(|q| q.2 == true)
                     .context("Unable to find namebox")?.0;
-                    
+
                 target.image = image.clone();
             }
         };
     }
-    
+
     Ok(())
 }

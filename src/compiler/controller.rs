@@ -1,7 +1,8 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
+use crate::ast;
+use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 
-use crate::{Act, BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 use std::collections::HashMap;
 use bevy::asset::{LoadState, LoadedFolder};
 use bevy::color::palettes::css::{BLACK, WHITE};
@@ -47,7 +48,7 @@ pub enum Controller {
 struct HandleToScriptsFolder(Handle<LoadedFolder>);
 #[derive(Resource, Default)]
 struct ScriptsResource(ScriptsMap);
-type ScriptsMap = HashMap<ScriptId, Handle<Act>>;
+type ScriptsMap = HashMap<ScriptId, Handle<ast::Act>>;
 #[derive(Resource)]
 struct CurrentScript(pub ScriptId);
 
@@ -65,7 +66,7 @@ impl Plugin for Compiler {
             .add_message::<SabiStart>()
             .add_systems(OnEnter(SabiState::Idle), propagate_state)
             .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
-            .add_systems(OnEnter(SabiState::WaitingForControllers), 
+            .add_systems(OnEnter(SabiState::WaitingForControllers),
                 (
                     spawn_ui_root,
                     propagate_state,
@@ -81,16 +82,19 @@ fn trigger_running_controllers(
     mut visual_novel_state: ResMut<VisualNovelState>,
     current_script: Res<CurrentScript>,
     scripts_resource: Res<ScriptsResource>,
-    acts: Res<Assets<Act>>,
+    acts: Res<Assets<ast::Act>>,
 ) -> Result<(), BevyError> {
     let act_handle = scripts_resource.0.get(&current_script.0)
         .context("Could not find script handle")?;
     let act = acts.get(act_handle.id())
         .context("Could not find script element")?;
-    
+
     visual_novel_state.act = Box::new(act.clone());
+    visual_novel_state.statements = act.scenes.get(&act.entrypoint)
+        .context("Error retrieving act entrypoint")?
+        .statements.clone().into_iter();
     visual_novel_state.blocking = false;
-    
+
     msg_writer.write(ControllersSetStateMessage(SabiState::Running));
     Ok(())
 }
@@ -159,13 +163,13 @@ fn spawn_ui_root(
     ));
 }
 fn define_script_entry(
-    handle: Handle<Act>
-) -> Result<(ScriptId, Handle<Act>), BevyError> {
+    handle: Handle<ast::Act>
+) -> Result<(ScriptId, Handle<ast::Act>), BevyError> {
     let path = match handle.path() {
         Some(asset_path) => asset_path.path(),
         None => { return Err(anyhow::anyhow!("Error retrieving script path").into()) }
     };
-    
+
     let script_id = if path.iter().count() == 3 {
         let chapter = path.components().nth(1)
             .context("Chapter component is not valid")?
@@ -211,7 +215,7 @@ fn check_states(
             }
         }
     }
-    
+
     for event in msg_controller_reader.read() {
         let controller = match event.0 {
             Controller::Background => &mut controllers_state.background_controller,
@@ -236,22 +240,21 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut scene_change_message: MessageWriter<'e, SceneChangeMessage>,
     mut act_change_message: MessageWriter<'f, ActChangeMessage>,
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
-    
+
     mut state: ResMut<NextState<SabiState>>,
 ) -> Result<(), BevyError> {
-    
+
     if game_state.blocking {
         return Ok(());
     }
-    
+
     if game_state.rewinding > 0 {
-        game_state.act.rewind();
-        game_state.rewinding = game_state.rewinding.saturating_sub(1);
-    } else {
-        game_state.act.advance();
+        // todo: rewind mechanism
+        return Ok(());
     }
-    
-    if let Some(statement) = game_state.act.current() {
+
+    if let Some(statement) = game_state.statements.next() {
+        game_state.history.push(statement.clone());
         statement.invoke(InvokeContext {
                 game_state: &mut game_state,
                 character_say_message: &mut character_say_message,
@@ -266,7 +269,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
         info!("Finished scripts!");
         state.set(SabiState::Idle);
     }
-    
+
     Ok(())
 }
 fn handle_scene_changes(
@@ -274,8 +277,13 @@ fn handle_scene_changes(
     mut game_state: ResMut<VisualNovelState>,
 ) -> Result<(), BevyError> {
     for msg in scene_change_messages.read() {
+        let new_scene = game_state.act.scenes.get(&msg.scene_id)
+            .context(format!("Scene '{}' not found in current act", msg.scene_id))?
+            .clone();
+
         info!("Changing to scene: {}", msg.scene_id);
-        game_state.act.change_scene(&msg.scene_id)?;
+        game_state.scene = new_scene;
+        game_state.statements = game_state.scene.statements.clone().into_iter();
         game_state.blocking = false;
         info!("[ Scene changed to '{}' ]", msg.scene_id);
     }
@@ -287,19 +295,25 @@ fn handle_act_changes(
     mut game_state: ResMut<VisualNovelState>,
     mut current_script: ResMut<CurrentScript>,
     scripts_resource: Res<ScriptsResource>,
-    scripts_assets: Res<Assets<Act>>,
+    scripts_assets: Res<Assets<ast::Act>>,
 ) -> Result<(), BevyError> {
     for msg in act_change_messages.read() {
         current_script.0.act = msg.act_id.clone();
         let act_handle = scripts_resource.0.get(&current_script.0).context(format!("Could not find act handle for {}", current_script.0.act))?;
         let act = scripts_assets.get(act_handle).context(format!("Could not find act {:?}", act_handle))?;
-        
+
         info!("Changing to act: {}", current_script.0.act);
-        
+
+        let entrypoint_scene = act.scenes.get(&act.entrypoint)
+            .context(format!("Entrypoint scene '{}' not found in act '{}'", act.entrypoint, current_script.0.act))?
+            .clone();
+
         game_state.act = Box::new(act.clone());
+        game_state.scene = entrypoint_scene;
+        game_state.statements = game_state.scene.statements.clone().into_iter();
         game_state.blocking = false;
         info!("[ Act changed to '{}' ]", msg.act_id);
     }
-    
+
     Ok(())
 }
