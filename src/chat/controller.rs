@@ -172,7 +172,8 @@ fn button_clicked_default_state(
         },
         UiButtons::Rewind => {
             warn!("Rewind button clicked!");
-            // game_state.set_rewind();
+            game_state.set_rewind();
+            game_state.blocking = false;
         },
         UiButtons::TextBox => {
             warn!("Textbox history clicked");
@@ -253,8 +254,6 @@ fn spawn_chatbox(
     asset_server: Res<AssetServer>,
     ui_root: Single<Entity, With<UiRoot>>,
 ){
-    // Todo: add despawn of ui elements
-
     // Spawn Backplate + Nameplate
     // Container
     let container = commands.spawn(backplate_container()).id();
