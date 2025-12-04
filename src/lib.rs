@@ -9,6 +9,8 @@ use std::vec::IntoIter;
 use crate::background::*;
 use crate::character::*;
 use crate::chat::*;
+use crate::compiler::ast::Evaluate;
+use crate::compiler::ast::Statement;
 use crate::compiler::*;
 use crate::loader::CharacterJsonLoader;
 use crate::loader::PestLoader;
@@ -28,7 +30,36 @@ pub(crate) struct VisualNovelState {
     pub statements: IntoIter<ast::Statement>,
     blocking: bool,
     pub rewinding: usize,
-    pub history: Vec<ast::Statement>,
+    pub history: Vec<HistoryItem>,
+}
+
+pub(crate) enum HistoryItem {
+    Statement(ast::Statement),
+    Descriptor(String),
+}
+
+impl VisualNovelState {
+    pub fn history_summary(&self) -> Result<Vec<String>> {
+        let mut text: Vec<String> = Vec::new();
+        
+        for statement in &self.history {
+            match statement {
+                HistoryItem::Statement(s) => {
+                    match s {
+                        Statement::Dialogue(d) => {
+                            text.push(d.character.clone() + format!(": {}\n", d.dialogue.evaluate_into_string()?).as_str());
+                        },
+                        _ => {}
+                    }
+                }
+                HistoryItem::Descriptor(s) => {
+                    text.push(s.clone() + "\n");
+                }
+            }
+        }
+        
+        Ok(text)
+    }
 }
 
 #[derive(Resource, Default)]

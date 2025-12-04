@@ -161,7 +161,8 @@ fn button_clicked_default_state(
         return Ok(())
     }
 
-    let entity = q_buttons.get(trigger.entity).context("Clicked Entity does not have UiButtons declared")?;
+    let entity = q_buttons.get(trigger.entity)
+        .context("Clicked Entity does not have UiButtons declared")?;
     match entity.1 {
         UiButtons::OpenHistory => {
             warn!("Open history clicked");

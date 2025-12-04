@@ -4,7 +4,7 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 //  enum for its statements
 act = { SOI ~ scene+ ~ EOI }
 scene = { "SCENE " ~ scene_name ~ statement* ~ "CURTAIN" }
-    scene_name = @{ (ASCII_ALPHANUMERIC+ | "_" | "-")+ }
+scene_name = @{ (ASCII_ALPHANUMERIC+ | "_" | "-")+ }
 
 // There are three types of statements
 //  1. Code statements for logic, etc

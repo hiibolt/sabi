@@ -279,27 +279,7 @@ fn scrollbar(entity: Entity) -> impl Bundle {
 }
 
 fn history_text(asset_server: &Res<AssetServer>, game_state: &ResMut<VisualNovelState>) -> Result<impl Bundle, BevyError> {
-    let mut history: Vec<String> = Vec::new();
-    // history.push(String::from("Act: ") + game_state.current_act.name.as_str());
-    // for scene in &game_state.current_act.scenes_reader.scenes {
-    //     let scene_name = game_state.current_act.current().context("No scene found")?.name;
-    //     history.push(string::from("scene: ") + scene_name.as_str() + "\n");
-    //     for (index, statement) in scene.statements.iter().enumerate() {
-    //         if index >= game_state.statements_reader.current_index() {
-    //             continue;
-    //         }
-    //         if let statement::dialogue(d) = statement {
-    //             let string = format!("{}: {}\n", d.character,
-    //                                 d.dialogue.evaluate_into_string().context("unable to retrieve history line")?);
-    //             history.push(string);
-    //         }
-    //     }
-    //     history.push("\n".into());
-    //     if scene_name == game_state.scene.name {
-    //         break;
-    //     }
-    // }
-    let history_text = history.join("\n");
+    let history_text = game_state.history_summary()?.join("\n");
     let font_handle = asset_server.load("fonts/ALLER.ttf");
     Ok((
         Node {

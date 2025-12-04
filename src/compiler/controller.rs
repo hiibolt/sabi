@@ -1,6 +1,6 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
-use crate::ast;
+use crate::{HistoryItem, ast};
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 
 use std::collections::HashMap;
@@ -93,6 +93,8 @@ fn trigger_running_controllers(
     visual_novel_state.statements = act.scenes.get(&act.entrypoint)
         .context("Error retrieving act entrypoint")?
         .statements.clone().into_iter();
+    visual_novel_state.history.push(HistoryItem::Descriptor(format!("Act: {}\n", act.name)));
+    visual_novel_state.history.push(HistoryItem::Descriptor(format!("Scene: {}\n", act.entrypoint)));
     visual_novel_state.blocking = false;
 
     msg_writer.write(ControllersSetStateMessage(SabiState::Running));
@@ -254,7 +256,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     }
 
     if let Some(statement) = game_state.statements.next() {
-        game_state.history.push(statement.clone());
+        game_state.history.push(HistoryItem::Statement(statement.clone()));
         statement.invoke(InvokeContext {
                 game_state: &mut game_state,
                 character_say_message: &mut character_say_message,
@@ -282,8 +284,9 @@ fn handle_scene_changes(
             .clone();
 
         info!("Changing to scene: {}", msg.scene_id);
-        game_state.scene = new_scene;
+        game_state.scene = new_scene.clone();
         game_state.statements = game_state.scene.statements.clone().into_iter();
+        game_state.history.push(HistoryItem::Descriptor(format!("Scene {}", new_scene.name)));
         game_state.blocking = false;
         info!("[ Scene changed to '{}' ]", msg.scene_id);
     }
@@ -311,6 +314,7 @@ fn handle_act_changes(
         game_state.act = Box::new(act.clone());
         game_state.scene = entrypoint_scene;
         game_state.statements = game_state.scene.statements.clone().into_iter();
+        game_state.history.push(HistoryItem::Descriptor(format!("Act {}", act.name)));
         game_state.blocking = false;
         info!("[ Act changed to '{}' ]", msg.act_id);
     }
