@@ -1,7 +1,7 @@
 SCENE ui_example
     (GUI namebox changes to "NAMEBOX")
-    (GUI textbox changes to "test" sliced)
-    Nayu: "Here to make some tests"
+    (GUI textbox changes to "nine_slice" sliced)
+    Nayu: "You can use the following messages to test rewind function"
     Nayu: "1"
     Nayu: "2"
     Nayu: "3"
@@ -15,7 +15,7 @@ SCENE ui_example
     (GUI textbox changes to "TEXTBOX_NASTYA")
     Nayu: "This is a textbox made by a single .png image, which is stretched automatically to fit namebox size."
     Nayu: "By the way, we can use the nine slice technique over a coherent image to create responsive textbox."
-    (GUI textbox changes to "test" sliced)
+    (GUI textbox changes to "nine_slice" sliced)
     Nayu: "This is an example which uses a 64x64 texture to define 9 piece of image to create the textbox."
     Nayu: "The slice cuts are actually calculated dividing the image by the fifth part of its width and height."
     (GUI textbox changes to "TEXTBOX_NASTYA")

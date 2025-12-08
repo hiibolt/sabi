@@ -1,4 +1,4 @@
-use crate::{VisualNovelState, chat::ui_provider::{backplate_container, history_panel, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
+use crate::{VisualNovelState, chat::ui::{basic::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, history::history_panel}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
 use std::collections::HashMap;
 use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch};
@@ -252,7 +252,7 @@ fn spawn_chatbox(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     ui_root: Single<Entity, With<UiRoot>>,
-){
+) -> Result<(), BevyError> {
     // Spawn Backplate + Nameplate
     // Container
     let container = commands.spawn(backplate_container()).id();
@@ -279,11 +279,13 @@ fn spawn_chatbox(
     commands.entity(textbox_bg).add_child(messagetext);
 
     // VN commands
-    let vn_commands = commands.spawn(vn_commands()).id();
+    let vn_commands = commands.spawn(vn_commands()?).id();
     commands.entity(textbox_bg).add_child(vn_commands);
 
     // InfoText
     commands.spawn(infotext(&asset_server));
+    
+    Ok(())
 }
 fn update_chatbox(
     mut event_message: MessageReader<CharacterSayMessage>,
