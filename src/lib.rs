@@ -53,20 +53,19 @@ impl<T> Cursor<T> {
     where
         T: Clone
     {
-        let out = self.data.get(self.pos)?.clone();
         self.pos += 1;
-        Some(out)
+        self.data.get(self.pos).cloned()
     }
 
     pub(crate) fn prev(&mut self) -> Option<T>
-    where 
+    where
         T: Clone
     {
         if self.pos == 0 { return None; }
         self.pos -= 1;
         self.data.get(self.pos).cloned()
     }
-    
+
     pub(crate) fn find_previous(&self) -> Option<T>
     where
         T: Clone + VariantKind
@@ -111,7 +110,8 @@ pub(crate) enum HistoryItem {
 
 impl VisualNovelState {
     pub fn set_rewind(&mut self) {
-        let last_d = self.history.iter().rposition(|s| {
+        let search_slice = &self.history[..self.history.len() - 1];
+        let last_d = search_slice.iter().rposition(|s| {
             if let HistoryItem::Statement(stm) = s {
                 matches!(stm, Statement::Dialogue(_))
             } else {
@@ -119,13 +119,14 @@ impl VisualNovelState {
             }
         });
         if let Some(index) = last_d {
-            self.rewinding = self.history.len() - index;
+            self.rewinding = self.history.len() - (index + 1);
+            self.blocking = false;
         }
     }
-    
+
     pub fn history_summary(&self) -> Result<Vec<String>> {
         let mut text: Vec<String> = Vec::new();
-        
+
         for statement in &self.history {
             match statement {
                 HistoryItem::Statement(s) => {
@@ -138,7 +139,7 @@ impl VisualNovelState {
                 }
             }
         }
-        
+
         Ok(text)
     }
 }

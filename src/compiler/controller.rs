@@ -250,25 +250,32 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     if game_state.blocking {
         return Ok(());
     }
-    
+
     let next_statement = if game_state.rewinding > 0 {
         info!("rewinding {}", game_state.rewinding);
         game_state.rewinding -= 1;
-        match game_state.statements.prev() {
+        let next_statement = match game_state.statements.prev() {
             Some(Statement::Dialogue(d)) => Some(Statement::Dialogue(d)),
             Some(Statement::Stage(_)) => {
                 game_state.statements.find_previous()
             },
-            // todo: fix next occurrence
-            // forse history è da togliere!
-            // todo: con questo sistema con la history, al rewind c'è da fare il pop dell'ultimo elemento (come fare quando è Act: ?)
-            // Non pratico
+            // todo: Statement::Code currently not handled
+            // is history field needed?
             _ => { None }
+        };
+        if let Some(_) = &next_statement {
+            let _ = game_state.history.pop();
         }
-    } else { game_state.statements.next() };
-    
+        next_statement
+    } else {
+        let next_statement = game_state.statements.next();
+        if let Some(stm) = &next_statement {
+            game_state.history.push(HistoryItem::Statement(stm.clone()));
+        }
+        next_statement
+    };
+
     if let Some(statement) = next_statement {
-        game_state.history.push(HistoryItem::Statement(statement.clone()));
         statement.invoke(InvokeContext {
                 game_state: &mut game_state,
                 character_say_message: &mut character_say_message,
