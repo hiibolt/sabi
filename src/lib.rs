@@ -33,12 +33,12 @@ impl VariantKind for ast::Statement {
 #[derive(Default)]
 pub(crate) struct Cursor<T> {
     data: Vec<T>,
-    pos: usize,
+    pos: i32,
 }
 
 impl Default for Cursor<ast::Statement> {
     fn default() -> Self {
-        Cursor { data: Vec::default(), pos: usize::default() }
+        Cursor { data: Vec::default(), pos: -1 }
     }
 }
 
@@ -46,15 +46,16 @@ impl<T> Cursor<T> {
     pub(crate) fn new(vec: Vec<T>) -> Self {
         Self {
             data: vec,
-            pos: 0,
+            pos: -1,
         }
     }
+    
     pub(crate) fn next(&mut self) -> Option<T>
     where
         T: Clone
     {
         self.pos += 1;
-        self.data.get(self.pos).cloned()
+        self.data.get(self.pos as usize).cloned()
     }
 
     pub(crate) fn prev(&mut self) -> Option<T>
@@ -63,14 +64,14 @@ impl<T> Cursor<T> {
     {
         if self.pos == 0 { return None; }
         self.pos -= 1;
-        self.data.get(self.pos).cloned()
+        self.data.get(self.pos as usize).cloned()
     }
 
     pub(crate) fn find_previous(&self) -> Option<T>
     where
         T: Clone + VariantKind
     {
-        if let Some(item) = self.data.get(self.pos) {
+        if let Some(item) = self.data.get(self.pos as usize) {
             let current_kind = item.kind();
             let mut idx: i32 = self.pos as i32 - 1;
             while idx >= 0 {
