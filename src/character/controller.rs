@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
-use crate::{ChatScrollStopwatch, GUIScrollText, VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
+use crate::{VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
 use crate::compiler::controller::UiRoot;
 
 pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
@@ -274,10 +274,8 @@ fn update_characters(
     mut character_change_message: MessageReader<CharacterChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
     images: Res<Assets<Image>>,
-
-    _text_object_query: Query<(&mut Text, &mut GUIScrollText)>,
-    _scroll_stopwatch: ResMut<ChatScrollStopwatch>,
 ) -> Result<(), BevyError> {
+    
     for msg in character_change_message.read() {
         let character_config = configs.0.get_mut(&msg.character).context(format!("Character config not found for {}", &msg.character))?;
         match &msg.operation {

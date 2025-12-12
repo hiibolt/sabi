@@ -1,0 +1,13 @@
+SCENE infotext_example
+    (Background changes to "main_classroom_day")
+    (GUI namebox changes to "NAMEBOX")
+    (GUI textbox changes to "nine_slice" sliced)
+    (Nayu appears sad)
+    Nayu: "Sometimes I feel like I'm always the one telling the story"
+    (Nayu disappears)
+    info: "For this purpose, there is the infotext, which appears at the center of the screen and can handle different needs"
+    info: "For example, this could be a narrator voice which tells what's going on"
+    info: "Or here we could write the different scenes title or other things..."
+    (Background dissolves)
+    info: "Scene ends"
+CURTAIN

@@ -208,7 +208,7 @@ fn update_background(
                     },
                     Transform::default(),
                     NextBackground,
-                    DespawnOnEnter(SabiState::Idle),
+                    DespawnOnExit(SabiState::Running),
                 ));
                 vn_state.blocking = true;
                 info!("[ Dissolve background to '{:?}']", target);

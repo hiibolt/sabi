@@ -143,7 +143,7 @@ pub fn spawn_character(
             ZIndex(CHARACTERS_Z_INDEX),
             Character,
             character_config,
-            DespawnOnEnter(SabiState::Idle)
+            DespawnOnExit(SabiState::Running)
         )
     ).id();
     commands.entity(ui_root.entity()).add_child(character_entity);

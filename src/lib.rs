@@ -9,6 +9,7 @@ use crate::character::*;
 use crate::chat::*;
 use crate::compiler::ast::Evaluate;
 use crate::compiler::ast::Statement;
+use crate::compiler::ast::TextItem;
 use crate::compiler::*;
 use crate::loader::CharacterJsonLoader;
 use crate::loader::PestLoader;
@@ -23,7 +24,7 @@ pub(crate) trait VariantKind {
 impl VariantKind for ast::Statement {
     fn kind(&self) -> usize {
         match self {
-            Statement::Dialogue(_) => 1,
+            Statement::TextItem(_) => 1,
             Statement::Stage(_)    => 2,
             Statement::Code(_)     => 3,
         }
@@ -114,7 +115,7 @@ impl VisualNovelState {
         let search_slice = &self.history[..self.history.len() - 1];
         let last_d = search_slice.iter().rposition(|s| {
             if let HistoryItem::Statement(stm) = s {
-                matches!(stm, Statement::Dialogue(_))
+                matches!(stm, Statement::TextItem(_))
             } else {
                 false
             }
@@ -131,8 +132,15 @@ impl VisualNovelState {
         for statement in &self.history {
             match statement {
                 HistoryItem::Statement(s) => {
-                    if let Statement::Dialogue(d) = s {
-                        text.push(d.character.clone() + format!(": {}\n", d.dialogue.evaluate_into_string()?).as_str());
+                    if let Statement::TextItem(t) = s {
+                        match t {
+                            TextItem::Dialogue(d) => {
+                                text.push(d.character.clone() + format!(": {}\n", d.dialogue.evaluate_into_string()?).as_str());
+                            },
+                            TextItem::InfoText(i) => {
+                                text.push(i.infotext.evaluate_into_string()?);
+                            }
+                        }
                     }
                 }
                 HistoryItem::Descriptor(s) => {
