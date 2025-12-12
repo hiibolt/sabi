@@ -173,22 +173,22 @@ fn define_characters_map(
 ) -> Result<(), BevyError> {
     let mut characters_sprites = CharacterSprites::new();
     let mut characters_configs = CharactersConfig::new();
-    let expected_len = PathBuf::from(CHARACTERS_ASSET_PATH).iter().count() + 2;
+    let expected_len = PathBuf::from(CHARACTERS_ASSET_PATH).iter().count() + 3;
     for handle in &loaded_folder.handles {
         let path = handle
             .path()
             .context("Error retrieving character asset path")?
             .path();
-        let name: String = match path.iter().nth(expected_len).map(|s| s.to_string_lossy().into()) {
+        let name: String = match path.iter().nth(expected_len - 3).map(|s| s.to_string_lossy().into()) {
             Some(name) => name,
             None => continue,
         };
-        if path.iter().count() == expected_len + 2 {
-            let outfit = match path.iter().nth(expected_len + 1).map(|s| s.to_string_lossy().into()) {
+        if path.iter().count() == expected_len {
+            let outfit = match path.iter().nth(expected_len - 2).map(|s| s.to_string_lossy().into()) {
                 Some(outfit) => outfit,
                 None => continue,
             };
-            let emotion = match path.iter().nth(expected_len + 2) {
+            let emotion = match path.iter().nth(expected_len - 1) {
                 Some(os_str) => {
                     let file = std::path::Path::new(os_str);
                     let name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -203,6 +203,7 @@ fn define_characters_map(
             };
 
             characters_sprites.insert(key, handle.clone().typed());
+            
         } else if path.iter().count() == expected_len - 1 {
             characters_configs.insert(
                 name.clone(),
