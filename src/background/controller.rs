@@ -81,10 +81,7 @@ impl Plugin for BackgroundController {
         app.add_message::<BackgroundChangeMessage>()
             .init_state::<BackgroundControllerState>()
             .init_resource::<Dissolving>()
-            .add_systems(Update, check_state_change
-                .run_if(in_state(BackgroundControllerState::Idle))
-                .run_if(in_state(BackgroundControllerState::Running))
-            )
+            .add_systems(Update, check_state_change.run_if(!in_state(BackgroundControllerState::Loading)))
             .add_systems(OnEnter(BackgroundControllerState::Loading), import_backgrounds_folder)
             .add_systems(Update, check_loading_state.run_if(in_state(BackgroundControllerState::Loading)))
             .add_systems(Update, (
