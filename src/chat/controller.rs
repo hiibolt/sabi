@@ -113,10 +113,7 @@ impl Plugin for ChatController {
             .add_message::<CharacterSayMessage>()
             .add_message::<GUIChangeMessage>()
             .add_plugins(UiWidgetsPlugins)
-            .add_systems(Update, wait_trigger
-                .run_if(in_state(ChatControllerState::Idle))
-                .run_if(in_state(ChatControllerState::Running))
-            )
+            .add_systems(Update, wait_trigger.run_if(!in_state(ChatControllerState::Loading)))
             .add_systems(OnEnter(ChatControllerState::Running), spawn_chatbox)
             .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)))
             .add_observer(button_clicked_history_state)
