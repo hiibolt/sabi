@@ -296,6 +296,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     } else {
         info!("Finished scripts!");
         state.set(SabiState::Idle);
+        msg_writer.write(ControllersSetStateMessage(SabiState::Idle));
         ev_writer.write(SabiEnd);
     }
 
