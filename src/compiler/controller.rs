@@ -251,6 +251,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
 
     mut state: ResMut<NextState<SabiState>>,
+    mut ev_controller_writer: MessageWriter<ControllersSetStateMessage>,
     mut ev_writer: MessageWriter<SabiEnd>,
 ) -> Result<(), BevyError> {
 
