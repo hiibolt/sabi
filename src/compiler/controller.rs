@@ -10,6 +10,8 @@ use bevy::color::palettes::css::{BLACK, WHITE};
 use bevy::prelude::*;
 use anyhow::{Context, Result};
 
+const SCRIPTS_ASSET_PATH: &str = "sabi/acts";
+
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
 pub enum SabiState {
@@ -122,7 +124,7 @@ fn import_scripts_folder(
     mut commands: Commands,
     asset_server: Res<AssetServer>
 ) {
-    let loaded_folder = asset_server.load_folder("acts");
+    let loaded_folder = asset_server.load_folder(SCRIPTS_ASSET_PATH);
     commands.insert_resource(HandleToScriptsFolder(loaded_folder));
 }
 fn spawn_ui_root(

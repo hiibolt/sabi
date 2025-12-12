@@ -14,6 +14,7 @@ pub const LEFT_PERCENTAGE: f32 = 20.;
 pub const CENTER_PERCENTAGE: f32 = 35.;
 pub const RIGHT_PERCENTAGE: f32 = 50.;
 pub const INVISIBLE_RIGHT_PERCENTAGE: f32 = 140.;
+const CHARACTERS_ASSET_PATH: &str = "sabi/characters";
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -249,7 +250,7 @@ fn setup(
     Ok(())
 }
 fn import_characters(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let loaded_folder = asset_server.load_folder("characters");
+    let loaded_folder = asset_server.load_folder(CHARACTERS_ASSET_PATH);
     commands.insert_resource(HandleToCharactersFolder(loaded_folder));
 }
 fn wait_trigger(

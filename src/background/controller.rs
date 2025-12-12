@@ -9,6 +9,7 @@ use crate::VisualNovelState;
 use crate::compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot};
 
 const BACKGROUND_Z_INDEX: i32 = 1;
+const BACKGROUNDS_ASSET_PATH: &str   = "sabi/backgrounds";
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -153,7 +154,7 @@ fn check_loading_state(
 /// Initiate import procedure and insert [bevy::asset::LoadedFolder] handle into [HandleToBackgroundsFolder] resource.
 /// Currently only "backgrounds" folder in bevy "assets" root is supported
 fn import_backgrounds_folder(mut commands: Commands, asset_server: Res<AssetServer>){
-    let loaded_folder = asset_server.load_folder("backgrounds");
+    let loaded_folder = asset_server.load_folder(BACKGROUNDS_ASSET_PATH);
     commands.insert_resource(HandleToBackgroundsFolder(loaded_folder));
 }
 /// Checks for state changes from main controller when in [BackgroundControllerState::Idle] state

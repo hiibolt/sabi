@@ -4,6 +4,8 @@ use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch};
 use bevy_ui_widgets::{Activate, UiWidgetsPlugins};
 
+const UI_ASSET_PATH: &str = "sabi/ui";
+
 /* Messages */
 #[derive(Message)]
 pub(crate) struct CharacterSayMessage {
@@ -245,7 +247,7 @@ fn setup(
     Ok(())
 }
 fn import_gui_sprites(mut commands: Commands, asset_server: Res<AssetServer> ){
-    let loaded_folder = asset_server.load_folder("gui");
+    let loaded_folder = asset_server.load_folder(UI_ASSET_PATH);
     commands.insert_resource(HandleToGuiFolder(loaded_folder));
 }
 fn spawn_chatbox(
