@@ -162,6 +162,8 @@ pub struct ScriptId {
 
 #[derive(Message)]
 pub struct SabiStart(pub ScriptId);
+#[derive(Message)]
+pub struct SabiEnd;
 
 pub struct SabiPlugin;
 impl Plugin for SabiPlugin {

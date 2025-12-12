@@ -1,7 +1,7 @@
 use crate::character::CharacterChangeMessage;
 use crate::compiler::ast::Statement;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
-use crate::{Cursor, HistoryItem, ast};
+use crate::{Cursor, HistoryItem, SabiEnd, ast};
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 
 use std::collections::HashMap;
@@ -68,6 +68,7 @@ impl Plugin for Compiler {
             .add_message::<SceneChangeMessage>()
             .add_message::<ActChangeMessage>()
             .add_message::<SabiStart>()
+            .add_message::<SabiEnd>()
             .add_systems(OnEnter(SabiState::Idle), propagate_state)
             .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
             .add_systems(OnEnter(SabiState::WaitingForControllers),
@@ -250,6 +251,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
 
     mut state: ResMut<NextState<SabiState>>,
+    mut ev_writer: MessageWriter<SabiEnd>,
 ) -> Result<(), BevyError> {
 
     if game_state.blocking {
@@ -294,6 +296,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     } else {
         info!("Finished scripts!");
         state.set(SabiState::Idle);
+        ev_writer.write(SabiEnd);
     }
 
     Ok(())
