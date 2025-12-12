@@ -70,11 +70,11 @@ impl Plugin for Compiler {
             .add_message::<ActChangeMessage>()
             .add_message::<SabiStart>()
             .add_message::<SabiEnd>()
-            .add_systems(OnEnter(SabiState::Idle), propagate_state)
+            .add_systems(OnEnter(SabiState::Idle), (clean_states, propagate_state).chain())
             .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
+            .add_systems(OnExit(SabiState::Idle), spawn_ui_root)
             .add_systems(OnEnter(SabiState::WaitingForControllers),
                 (
-                    spawn_ui_root,
                     propagate_state,
                     import_scripts_folder
                 ).chain())
@@ -82,6 +82,14 @@ impl Plugin for Compiler {
             .add_systems(OnEnter(SabiState::Running), trigger_running_controllers)
             .add_systems(Update, (run, handle_scene_changes, handle_act_changes).run_if(in_state(SabiState::Running)));
     }
+}
+fn clean_states(
+    mut controllers_state: ResMut<ControllersReady>,
+) {
+    controllers_state.background_controller = false;
+    controllers_state.character_controller = false;
+    controllers_state.chat_controller = false;
+    controllers_state.compiler_controller = false;
 }
 fn trigger_running_controllers(
     mut msg_writer: MessageWriter<ControllersSetStateMessage>,
@@ -144,6 +152,7 @@ fn spawn_ui_root(
         BackgroundColor(Color::NONE.into()),
         GlobalTransform::default(),
         UiRoot,
+        DespawnOnEnter(SabiState::Idle),
         children![
             (
                 Node {
