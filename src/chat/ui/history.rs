@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy_ui_widgets::{CoreScrollbarThumb, Scrollbar};
 
 use crate::chat::controller::{HistoryScrollbar, HistoryText, UiButtons};
+use crate::chat::ui::FONT_PATH;
 use crate::chat::ui::basic::button;
 use crate::{VisualNovelState, chat::{UI_Z_INDEX, controller::{CurrentTextBoxBackground, HistoryPanel}}};
 
@@ -94,7 +95,7 @@ fn scrollbar(entity: Entity) -> impl Bundle {
 
 fn history_text(asset_server: &Res<AssetServer>, game_state: &ResMut<VisualNovelState>) -> Result<impl Bundle, BevyError> {
     let history_text = game_state.history_summary()?.join("\n");
-    let font_handle = asset_server.load("fonts/ALLER.ttf");
+    let font_handle = asset_server.load(FONT_PATH);
     Ok((
         Node {
             display: Display::Flex,

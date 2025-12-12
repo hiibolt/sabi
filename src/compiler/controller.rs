@@ -5,6 +5,7 @@ use crate::{Cursor, HistoryItem, ast};
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use bevy::asset::{LoadState, LoadedFolder};
 use bevy::color::palettes::css::{BLACK, WHITE};
 use bevy::prelude::*;
@@ -174,9 +175,11 @@ fn define_script_entry(
         Some(asset_path) => asset_path.path(),
         None => { return Err(anyhow::anyhow!("Error retrieving script path").into()) }
     };
+    
+    let expected_len = PathBuf::from(SCRIPTS_ASSET_PATH).iter().count() + 2;
 
-    let script_id = if path.iter().count() == 3 {
-        let chapter = path.components().nth(1)
+    let script_id = if path.iter().count() == expected_len {
+        let chapter = path.components().nth(expected_len - 2)
             .context("Chapter component is not valid")?
             .as_os_str().to_str().context("Could not convert chapter path to os_str")?
             .to_owned();

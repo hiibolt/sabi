@@ -1,7 +1,7 @@
 use bevy::{color::palettes::css::{BLACK, GREEN, RED}, prelude::*};
 use bevy_ui_widgets::Button;
 use crate::{
-    chat::{GUIScrollText, UI_Z_INDEX, controller::{InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands}
+    chat::{GUIScrollText, UI_Z_INDEX, controller::{InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands}, ui::FONT_PATH
     },
     compiler::controller::SabiState
 };
@@ -51,7 +51,7 @@ pub(crate) fn nametext(asset_server: &Res<AssetServer>) -> impl Bundle {
         },
         Text::new("TEST"),
         TextFont {
-            font: asset_server.load("fonts/ALLER.ttf"),
+            font: asset_server.load(FONT_PATH),
             font_size: 30.0,
             ..default()
         },
@@ -86,7 +86,7 @@ pub(crate) fn messagetext(asset_server: &Res<AssetServer>) -> impl Bundle {
         GUIScrollText::default(),
         Node::default(),
         TextFont {
-            font: asset_server.load("fonts/ALLER.ttf"),
+            font: asset_server.load(FONT_PATH),
             font_size: 30.0,
             ..default()
         },
@@ -99,7 +99,7 @@ pub(crate) fn infotext(asset_server: &Res<AssetServer>) -> impl Bundle {
         Text::new(""),
         Node::default(),
         TextFont {
-            font: asset_server.load("fonts/ALLER.ttf"),
+            font: asset_server.load(FONT_PATH),
             font_size: 40.0,
             ..default()
         },
