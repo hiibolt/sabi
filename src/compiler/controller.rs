@@ -31,6 +31,19 @@ struct ControllersReady {
     pub compiler_controller: bool,
 }
 
+impl ControllersReady {
+    fn all_ready(&self) -> bool {
+        self.background_controller == true &&
+        self.character_controller == true &&
+        self.chat_controller == true &&
+        self.compiler_controller == true
+    }
+    
+    fn reset(&mut self) -> () {
+        *self = Self::default();
+    }
+}
+
 /* Components */
 #[derive(Component)]
 pub struct UiRoot;
@@ -86,10 +99,7 @@ impl Plugin for Compiler {
 fn clean_states(
     mut controllers_state: ResMut<ControllersReady>,
 ) {
-    controllers_state.background_controller = false;
-    controllers_state.character_controller = false;
-    controllers_state.chat_controller = false;
-    controllers_state.compiler_controller = false;
+    controllers_state.reset();
 }
 fn trigger_running_controllers(
     mut msg_writer: MessageWriter<ControllersSetStateMessage>,
@@ -243,10 +253,7 @@ fn check_states(
         };
         *controller = true;
     }
-    if controllers_state.background_controller
-       && controllers_state.character_controller
-       && controllers_state.chat_controller
-       && controllers_state.compiler_controller {
+    if controllers_state.all_ready() {
         sabi_state.set(SabiState::Running);
     }
     Ok(())
