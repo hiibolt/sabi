@@ -115,7 +115,7 @@ impl VisualNovelState {
         let search_slice = &self.history[..self.history.len() - 1];
         let last_d = search_slice.iter().rposition(|s| {
             if let HistoryItem::Statement(stm) = s {
-                matches!(stm, Statement::TextItem(_))
+                matches!(stm, Statement::TextItem(TextItem::Dialogue(_)))
             } else {
                 false
             }
@@ -138,7 +138,7 @@ impl VisualNovelState {
                                 text.push(d.character.clone() + format!(": {}\n", d.dialogue.evaluate_into_string()?).as_str());
                             },
                             TextItem::InfoText(i) => {
-                                text.push(i.infotext.evaluate_into_string()?);
+                                text.push(i.infotext.evaluate_into_string()? + "\n");
                             }
                         }
                     }

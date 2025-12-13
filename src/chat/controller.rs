@@ -169,8 +169,8 @@ fn button_clicked_default_state(
     mut commands: Commands,
     vncontainer_visibility: Single<&mut Visibility, (With<VNContainer>, Without<InfoTextContainer>, Without<InfoTextComponent>)>,
     scroll_stopwatch: ResMut<ChatScrollStopwatch>,
-    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>, Without<InfoTextComponent>)>,
-    info_text: Single<(&mut GUIScrollText, &mut Text, &mut Visibility), (With<InfoTextComponent>, Without<NameText>, Without<MessageText>, Without<VNContainer>)>,
+    mut message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>, Without<InfoTextComponent>)>,
+    mut info_text: Single<(&mut GUIScrollText, &mut Text, &mut Visibility), (With<InfoTextComponent>, Without<NameText>, Without<MessageText>, Without<VNContainer>)>,
     info_text_container_zidx: Single<&mut ZIndex, (With<InfoTextContainer>, Without<VNContainer>)>,
     mut game_state: ResMut<VisualNovelState>,
     ui_root: Single<Entity, With<UiRoot>>,
@@ -196,6 +196,8 @@ fn button_clicked_default_state(
         },
         UiButtons::Rewind => {
             warn!("Rewind button clicked!");
+            *info_text.0 = GUIScrollText::default();
+            *message_text.0 = GUIScrollText::default();
             game_state.set_rewind();
         },
         UiButtons::TextBox => {
