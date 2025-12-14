@@ -1,9 +1,9 @@
 mod character_operations;
-pub mod controller;
+pub(crate) mod controller;
 
-pub use controller::CharacterChangeMessage;
-pub use controller::CharacterConfig;
-pub use controller::CharacterController;
-pub use controller::CharacterOperation;
-pub use controller::CharactersResource;
+pub(crate) use controller::ActorChangeMessage;
+pub(crate) use controller::CharacterConfig;
+pub(crate) use controller::CharacterController;
+pub(crate) use controller::ActorOperation;
+pub(crate) use controller::CharactersResource;
 

@@ -1,4 +1,4 @@
-use crate::character::CharacterChangeMessage;
+use crate::character::ActorChangeMessage;
 use crate::chat::controller::InfoTextMessage;
 use crate::compiler::ast::Statement;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
@@ -249,7 +249,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h> (
     mut gui_change_message: MessageWriter<'d, GUIChangeMessage>,
     mut scene_change_message: MessageWriter<'e, SceneChangeMessage>,
     mut act_change_message: MessageWriter<'f, ActChangeMessage>,
-    mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
+    mut character_change_message: MessageWriter<'g, ActorChangeMessage>,
     mut info_text_message: MessageWriter<'h, InfoTextMessage>,
 
     mut state: ResMut<NextState<SabiState>>,
@@ -293,7 +293,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h> (
                 gui_change_message: &mut gui_change_message,
                 scene_change_message: &mut scene_change_message,
                 act_change_message: &mut act_change_message,
-                character_change_message: &mut character_change_message,
+                actor_change_message: &mut character_change_message,
                 info_text_message: &mut info_text_message,
             })
             .context("Failed to invoke statement")?;

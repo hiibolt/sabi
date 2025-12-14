@@ -1,7 +1,7 @@
 use std::ops::Index;
 use anyhow::Context;
 use bevy::prelude::*;
-use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterPosition, FadingCharacters, MovingCharacters, SpriteKey}}, compiler::controller::SabiState};
+use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterPosition, FadingActors, MovingActors, SpriteKey}}, compiler::controller::SabiState};
 use crate::compiler::controller::UiRoot;
 
 const MOVEMENT_STEP: f32 = 0.4;
@@ -28,7 +28,7 @@ pub fn change_character_emotion(
 }
 pub fn move_characters(
     query: Query<(Entity, &mut Node), With<Character>>,
-    mut moving_characters: ResMut<MovingCharacters>,
+    mut moving_characters: ResMut<MovingActors>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
     for (entity, mut node) in query {
@@ -66,7 +66,7 @@ pub fn move_characters(
 pub fn apply_alpha(
     mut commands: Commands,
     mut query: Query<&mut ImageNode, With<Character>>,
-    mut fading_characters: ResMut<FadingCharacters>,
+    mut fading_characters: ResMut<FadingActors>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
     if fading_characters.0.is_empty() {
@@ -110,7 +110,7 @@ pub fn spawn_character(
     character_config: CharacterConfig,
     sprites: &Res<CharactersResource>,
     fading: bool,
-    fading_characters: &mut ResMut<FadingCharacters>,
+    fading_characters: &mut ResMut<FadingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
     images: &Res<Assets<Image>>,
     position: CharacterPosition,

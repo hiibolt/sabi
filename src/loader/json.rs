@@ -1,10 +1,10 @@
 use bevy::asset::AssetLoader;
 use thiserror::Error;
 
-use crate::character::CharacterConfig;
+use crate::character::{CharacterConfig, controller::{ActorConfig, AnimationConfig}};
 
 #[derive(Debug, Error)]
-pub enum CharacterJsonError {
+pub enum ActorJsonError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("JSON parse error: {0}")]
@@ -13,11 +13,11 @@ pub enum CharacterJsonError {
 
 /// Custom asset loader to parse characters configuration.
 #[derive(Default)]
-pub struct CharacterJsonLoader;
-impl AssetLoader for CharacterJsonLoader {
-    type Asset = CharacterConfig;
+pub struct ActorJsonLoader;
+impl AssetLoader for ActorJsonLoader {
+    type Asset = ActorConfig;
     type Settings = ();
-    type Error = CharacterJsonError;
+    type Error = ActorJsonError;
 
     fn load(
             &self,
@@ -28,8 +28,12 @@ impl AssetLoader for CharacterJsonLoader {
         Box::pin(async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
-            let parsed: CharacterConfig = serde_json::from_slice(&bytes)?;
-            Ok(parsed)
+            if let Ok(parsed) = serde_json::from_slice::<CharacterConfig>(&bytes) {
+                Ok(ActorConfig::Character(parsed))
+            } else {
+                let parsed = serde_json::from_slice::<AnimationConfig>(&bytes)?;
+                Ok(ActorConfig::Animation(parsed.clone()))
+            }
         })
     }
 

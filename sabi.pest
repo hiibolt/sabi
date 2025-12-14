@@ -23,12 +23,14 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
         background_change |
         scene_change |
         act_change |
-        character_change }
+        character_change |
+        animation_change }
     background_change = { background_directive }
     gui_change = { "GUI" ~ gui_element ~ "changes" ~ "to" ~ expr ~ image_mode? }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
+    animation_change = { "Animated" ~ expr ~ character_spawn_directive ~ animation_position? ~ (character_direction_directive ~ character_direction)? }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
@@ -84,6 +86,17 @@ character_position = {
                         "right" |
                         "invisible left" |
                         "invisible right"
+                     }
+animation_position = {
+                         "top left" |
+                         "top" |
+                         "top right" |
+                         "left" |
+                         "center" |
+                         "right" |
+                         "bottom left" |
+                         "bottom" |
+                         "bottom right"
                      }
 character_action =  {
                         (character_spawn_directive ~ character_position? ~ emotion_name?) |

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{any::TypeId, collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
@@ -15,6 +15,7 @@ pub const CENTER_PERCENTAGE: f32 = 35.;
 pub const RIGHT_PERCENTAGE: f32 = 50.;
 pub const INVISIBLE_RIGHT_PERCENTAGE: f32 = 140.;
 const CHARACTERS_ASSET_PATH: &str = "sabi/characters";
+const ANIMATIONS_ASSET_PATH: &str = "sabi/animations";
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -44,6 +45,21 @@ pub struct CharacterConfig {
     pub description: String,
     pub emotions: Vec<String>,
     pub outfits: Vec<String>,
+}
+#[derive(Component, Debug, Default, Asset, TypePath, Deserialize, Clone)]
+pub struct AnimationConfig {
+    pub width: usize,
+    pub height: usize,
+    pub fps: usize,
+    pub rows: usize,
+    pub columns: usize,
+    pub start_index: usize,
+    pub end_index: usize,
+}
+#[derive(Component, Debug, Asset, TypePath, Deserialize, Clone)]
+pub enum ActorConfig {
+    Character(CharacterConfig),
+    Animation(AnimationConfig),
 }
 
 #[derive(Component, Default, Debug, Clone, PartialEq)]
@@ -93,13 +109,21 @@ impl TryFrom<&str> for CharacterPosition {
 #[derive(Resource)]
 struct HandleToCharactersFolder(Handle<LoadedFolder>);
 #[derive(Resource)]
+struct HandleToAnimationsFolder(Handle<LoadedFolder>);
+#[derive(Resource)]
 pub struct CharactersResource(pub CharacterSprites);
 #[derive(Resource)]
-struct Configs(CharactersConfig);
+pub struct AnimationsResource(pub AnimationSprites);
+#[derive(Resource, Default, Debug)]
+struct ActorsConfigs(ActorsConfig);
 #[derive(Resource, Default)]
-pub struct FadingCharacters(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
+struct CharFolderLoaded(pub bool);
 #[derive(Resource, Default)]
-pub struct MovingCharacters(pub Vec<(Entity, f32)>); // entity, target_position
+struct AnimFolderLoaded(pub bool);
+#[derive(Resource, Default)]
+pub struct FadingActors(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
+#[derive(Resource, Default)]
+pub struct MovingActors(pub Vec<(Entity, f32)>); // entity, target_position
 
 /* Custom types */
 #[derive(Hash, Eq, PartialEq, Debug)]
@@ -108,8 +132,9 @@ pub struct SpriteKey {
     pub outfit: String,
     pub emotion: String,
 }
+type ActorsConfig = HashMap<String, ActorConfig>;
 type CharacterSprites = HashMap<SpriteKey, Handle<Image>>;
-type CharactersConfig = HashMap<String, CharacterConfig>;
+type AnimationSprites = HashMap<String, Handle<Image>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CharacterDirection {
@@ -125,60 +150,76 @@ pub struct SpawnInfo {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum CharacterOperation {
+pub(crate) enum ActorOperation {
     Spawn(SpawnInfo), 
     EmotionChange(String),
     Despawn(bool), // fading
     Look(CharacterDirection),
     Move(CharacterPosition),
 }
+pub(crate) enum ActorType {
+    Character,
+    Animation,
+}
 
 /* Messages */
 #[derive(Message)]
-pub struct CharacterChangeMessage {
-    pub character: String,
-    pub operation: CharacterOperation,
+pub(crate) struct ActorChangeMessage {
+    pub r#type: ActorType,
+    pub name: String,
+    pub operation: ActorOperation,
 }
-
-impl CharacterChangeMessage {
+impl ActorChangeMessage {
     pub fn is_blocking(&self) -> bool {
         match &self.operation {
-            CharacterOperation::Spawn(info) => {
+            ActorOperation::Spawn(info) => {
                 if info.fading { true } else { false }
             },
-            CharacterOperation::Despawn(true) => true,
+            ActorOperation::Despawn(true) => true,
             _ => false
         }
     }
 }
 
-pub struct CharacterController;
+pub(crate) struct CharacterController;
 impl Plugin for CharacterController {
     fn build(&self, app: &mut App) {
-        app.insert_resource(MovingCharacters::default())
-            .insert_resource(FadingCharacters::default())
-            .add_message::<CharacterChangeMessage>()
+        app.insert_resource(MovingActors::default())
+            .insert_resource(FadingActors::default())
+            .insert_resource(CharFolderLoaded::default())
+            .insert_resource(AnimFolderLoaded::default())
+            .insert_resource(ActorsConfigs::default())
+            .add_message::<ActorChangeMessage>()
             .init_state::<CharacterControllerState>()
             .add_systems(Update, wait_trigger)
             .add_systems(OnEnter(CharacterControllerState::Loading), import_characters)
             .add_systems(Update, setup.run_if(in_state(CharacterControllerState::Loading)))
-            .add_systems(Update, (update_characters, apply_alpha, move_characters)
-                .run_if(in_state(CharacterControllerState::Running)));
+            .add_systems(Update, (update_actors, apply_alpha, move_characters)
+                .run_if(in_state(CharacterControllerState::Running)))
+            .add_systems(OnExit(CharacterControllerState::Running), clean_resources);
     }
 }
+fn clean_resources(
+    mut char_loaded_folder: ResMut<CharFolderLoaded>,
+    mut anim_loaded_folder: ResMut<AnimFolderLoaded>,
+) {
+    char_loaded_folder.0 = false;
+    anim_loaded_folder.0 = false;
+}
 fn define_characters_map(
-    mut commands: Commands,
-    config_res: Res<Assets<CharacterConfig>>,
+    commands: &mut Commands,
+    actor_config_assets: &Res<Assets<ActorConfig>>,
     loaded_folder: &LoadedFolder,
+    actual_configs: &ResMut<ActorsConfigs>,
 ) -> Result<(), BevyError> {
+    
     let mut characters_sprites = CharacterSprites::new();
-    let mut characters_configs = CharactersConfig::new();
+    let mut characters_configs = ActorsConfig::new();
+    
     let expected_len = PathBuf::from(CHARACTERS_ASSET_PATH).iter().count() + 3;
+    
     for handle in &loaded_folder.handles {
-        let path = handle
-            .path()
-            .context("Error retrieving character asset path")?
-            .path();
+        let path = handle.path().context("Error retrieving character asset path")?.path();
         let name: String = match path.iter().nth(expected_len - 3).map(|s| s.to_string_lossy().into()) {
             Some(name) => name,
             None => continue,
@@ -201,59 +242,120 @@ fn define_characters_map(
                 outfit,
                 emotion,
             };
-
+            
             characters_sprites.insert(key, handle.clone().typed());
             
         } else if path.iter().count() == expected_len - 1 {
             characters_configs.insert(
                 name.clone(),
-                config_res
-                    .get(&handle.clone().typed::<CharacterConfig>())
+                actor_config_assets
+                    .get(&handle.clone().typed::<ActorConfig>())
                     .context(format!("Failed to retrieve CharacterConfig for '{}'", name))?
                     .clone(),
             );
         }
     }
     commands.insert_resource(CharactersResource(characters_sprites));
-    commands.insert_resource(Configs(characters_configs));
+    commands.insert_resource(ActorsConfigs(actual_configs.0.clone().into_iter().chain(characters_configs).collect()));
+    Ok(())
+}
+fn define_animations_map(
+    commands: &mut Commands,
+    config_res: &Res<Assets<ActorConfig>>,
+    loaded_folder: &LoadedFolder,
+    actual_configs: &ResMut<ActorsConfigs>,
+) -> Result<(), BevyError> {
+    
+    let mut animations_configs = ActorsConfig::new();
+    let mut animations_sprites = AnimationSprites::new();
+    
+    for handle in &loaded_folder.handles {
+        if handle.type_id() == TypeId::of::<ActorConfig>() {
+            let concrete_config = config_res.get(&handle.clone().typed::<ActorConfig>()).context("Could not find concrete configuration")?;
+            let concrete_config = if let ActorConfig::Animation(a) = concrete_config {
+                a
+            } else { continue };
+            animations_configs.insert("fire".into(), ActorConfig::Animation(concrete_config.clone()));
+        } else {
+            let path = handle.path().context("Error retrieving animation asset path")?.path();
+            let name: String = path.file_stem().context("Animation file has no name")?.to_string_lossy().to_owned().to_string();
+            animations_sprites.insert(name, handle.clone().typed());
+        }
+    }
+    info!("Adding animation resources: {:?}", animations_sprites);
+    info!("Adding animation resources: {:?}", animations_configs);
+    commands.insert_resource(AnimationsResource(animations_sprites));
+    commands.insert_resource(ActorsConfigs(actual_configs.0.clone().into_iter().chain(animations_configs).collect()));
+    
     Ok(())
 }
 fn setup(
-    commands: Commands,
+    mut commands: Commands,
     asset_server: Res<AssetServer>,
     loaded_folders: Res<Assets<LoadedFolder>>,
-    folder_handle: Res<HandleToCharactersFolder>,
-    configs: Res<Assets<CharacterConfig>>,
+    folder_char_handle: Res<HandleToCharactersFolder>,
+    folder_anim_handle: Res<HandleToAnimationsFolder>,
+    actor_config_asset: Res<Assets<ActorConfig>>,
+    actual_configs: ResMut<ActorsConfigs>,
+    mut char_folder_loaded: ResMut<CharFolderLoaded>,
+    mut anim_folder_loaded: ResMut<AnimFolderLoaded>,
     mut controller_state: ResMut<NextState<CharacterControllerState>>,
     mut ev_writer: MessageWriter<ControllerReadyMessage>,
 ) -> Result<(), BevyError> {
-    if let Some(state) = asset_server.get_load_state(folder_handle.0.id()) {
-        match state {
-            LoadState::Loaded => {
-                if let Some(loaded_folder) = loaded_folders.get(folder_handle.0.id()) {
-                    define_characters_map(commands, configs, loaded_folder)?;
-                    ev_writer.write(ControllerReadyMessage(Controller::Character));
-                    controller_state.set(CharacterControllerState::Idle);
-                    info!("character controller ready");
-                } else {
-                    return Err(
-                        anyhow::anyhow!("Error loading character assets").into(),
-                    );
+    
+    // char folder
+    if char_folder_loaded.0 == false {
+        if let Some(state) = asset_server.get_load_state(folder_char_handle.0.id()) {
+            match state {
+                LoadState::Loaded => {
+                    if let Some(loaded_folder) = loaded_folders.get(folder_char_handle.0.id()) {
+                        define_characters_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs)?;
+                        char_folder_loaded.0 = true;
+                    } else {
+                        return Err(anyhow::anyhow!("Error loading character assets").into());
+                    }
                 }
+                LoadState::Failed(e) => {
+                    return Err(anyhow::anyhow!("Error loading character assets: {}", e.to_string()).into());
+                }
+                _ => {}
             }
-            LoadState::Failed(e) => {
-                return Err(
-                    anyhow::anyhow!("Error loading character assets: {}", e.to_string()).into(),
-                );
-            }
-            _ => {}
         }
     }
+    
+    // animation folder
+    if anim_folder_loaded.0 == false {
+        if let Some(state) = asset_server.get_load_state(folder_anim_handle.0.id()) {
+            match state {
+                LoadState::Loaded => {
+                    if let Some(loaded_folder) = loaded_folders.get(folder_anim_handle.0.id()) {
+                        define_animations_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs)?;
+                        anim_folder_loaded.0 = true;
+                    } else {
+                        return Err(anyhow::anyhow!("Error loading animation assets").into());
+                    }
+                }
+                LoadState::Failed(e) => {
+                    return Err(anyhow::anyhow!("Error loading animation assets: {}", e.to_string()).into());
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    if char_folder_loaded.0 == true && anim_folder_loaded.0 == true {
+        ev_writer.write(ControllerReadyMessage(Controller::Character));
+        controller_state.set(CharacterControllerState::Idle);
+        info!("character controller ready");
+    }
+    
     Ok(())
 }
 fn import_characters(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let loaded_folder = asset_server.load_folder(CHARACTERS_ASSET_PATH);
-    commands.insert_resource(HandleToCharactersFolder(loaded_folder));
+    let loaded_char_folder = asset_server.load_folder(CHARACTERS_ASSET_PATH);
+    let loaded_anim_folder = asset_server.load_folder(ANIMATIONS_ASSET_PATH);
+    commands.insert_resource(HandleToCharactersFolder(loaded_char_folder));
+    commands.insert_resource(HandleToAnimationsFolder(loaded_anim_folder));
 }
 fn wait_trigger(
     mut msg_reader: MessageReader<ControllersSetStateMessage>,
@@ -263,34 +365,38 @@ fn wait_trigger(
         controller_state.set(msg.0.into());
     }
 }
-fn update_characters(
+fn update_actors(
     mut commands: Commands,
     mut character_query: Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
     ui_root: Single<Entity, With<UiRoot>>,
     sprites: Res<CharactersResource>,
-    mut configs: ResMut<Configs>,
-    mut fading_characters: ResMut<FadingCharacters>,
-    mut moving_characters: ResMut<MovingCharacters>,
-    mut character_change_message: MessageReader<CharacterChangeMessage>,
+    mut actor_configs: ResMut<ActorsConfigs>,
+    mut fading_actors: ResMut<FadingActors>,
+    mut moving_actors: ResMut<MovingActors>,
+    mut actor_change_message: MessageReader<ActorChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
     images: Res<Assets<Image>>,
 ) -> Result<(), BevyError> {
     
-    for msg in character_change_message.read() {
-        let character_config = configs.0.get_mut(&msg.character).context(format!("Character config not found for {}", &msg.character))?;
+    for msg in actor_change_message.read() {
+        info!("configs: {actor_configs:#?} name: {:#?}", msg.name);
+        let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
+        let character_config = if let ActorConfig::Character(c) = actor_config {
+            c
+        } else { continue; };
         match &msg.operation {
-            CharacterOperation::Spawn(info) => {
+            ActorOperation::Spawn(info) => {
                 let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
                 character_config.emotion = emotion.clone();
                 if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
                     warn!("Another instance of the character is already in the World!");
                 }
-                spawn_character(&mut commands, character_config.clone(), &sprites, info.fading, &mut fading_characters, &ui_root, &images, info.position.clone())?;
+                spawn_character(&mut commands, character_config.clone(), &sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
                 if info.fading {
                     game_state.blocking = true;
                 }
             },
-            CharacterOperation::EmotionChange(emotion) => {
+            ActorOperation::EmotionChange(emotion) => {
                 if !character_config.emotions.contains(&emotion) {
                     return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
                 }
@@ -304,10 +410,10 @@ fn update_characters(
                 };
                 change_character_emotion(&mut entity.2, &sprites, emotion, character_config)?;
             },
-            CharacterOperation::Despawn(fading) => {
+            ActorOperation::Despawn(fading) => {
                 if *fading {
                     for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
-                        fading_characters.0.push((entity.0, -0.01, true));
+                        fading_actors.0.push((entity.0, -0.01, true));
                     }
                     game_state.blocking = true;
                 } else {
@@ -316,15 +422,15 @@ fn update_characters(
                     }
                 }
             },
-            CharacterOperation::Look(direction) => {
+            ActorOperation::Look(direction) => {
                 for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
                     image.flip_x = direction == &CharacterDirection::Left;
                 }
             },
-            CharacterOperation::Move(position) => {
+            ActorOperation::Move(position) => {
                 for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
                     let target_position = position.to_percentage_value();
-                    moving_characters.0.push((entity, target_position));
+                    moving_actors.0.push((entity, target_position));
                     game_state.blocking = true;
                 }
             }

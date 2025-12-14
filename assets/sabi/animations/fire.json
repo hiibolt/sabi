@@ -1,0 +1,9 @@
+{
+  "width": 50,
+  "height": 50,
+  "fps": 3,
+  "rows": 1,
+  "columns": 5,
+  "start_index": 0,
+  "end_index": 4
+}

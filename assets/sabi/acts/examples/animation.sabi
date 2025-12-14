@@ -1,0 +1,8 @@
+SCENE animation_example
+    (GUI namebox changes to "NAMEBOX")
+    (GUI textbox changes to "nine_slice" sliced)
+    (Nayu appears)
+    Nayu: "Don't you think that sometimes everything seems to be a little static?"
+    (Animated "fire" appears)
+    Nayu: (concerned) "Dear God! What are you?!"
+CURTAIN

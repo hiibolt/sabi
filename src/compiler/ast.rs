@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::{
     background::controller::{BackgroundDirection, BackgroundOperation},
-    character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}},
+    character::{ActorOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}},
     chat::controller::{GuiChangeTarget, GuiImageMode}
 };
 
@@ -106,7 +106,8 @@ pub(crate) enum StageCommand {
     GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr>, image_mode: GuiImageMode },
     SceneChange { scene_expr: Box<Expr> },
     ActChange { act_expr: Box<Expr> },
-    CharacterChange { character: String, operation: CharacterOperation },
+    CharacterChange { character: String, operation: ActorOperation },
+    AnimationChange { animation: String, operation: ActorOperation },
 }
 
 #[derive(Debug, Clone)]
@@ -211,10 +212,10 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                     _ => {added_action = None;}
                 };
             }
-            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Spawn(info) }
+            StageCommand::CharacterChange { character: character.to_string(), operation: ActorOperation::Spawn(info) }
         },
         "disappears" | "fade out" => {
-            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Despawn(action == "fade out") }
+            StageCommand::CharacterChange { character: character.to_string(), operation: ActorOperation::Despawn(action == "fade out") }
         },
         other => bail!("Unexpected action in Character Spawn Directive command: {:?}", other)
     };
@@ -239,7 +240,7 @@ fn build_character_direction_directive(character: &str, action: &str, mut inner_
                 },
                 _ => { bail!("Character direction directive needs direction argument [\"left\", \"right\"]"); }
             };
-            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Look(direction) }
+            StageCommand::CharacterChange { character: character.to_string(), operation: ActorOperation::Look(direction) }
         }
         other => bail!("Unexpected action in Character Direction Directive command: {:?}", other)
     };
@@ -262,7 +263,7 @@ fn build_character_movement_directive(character: &str, action: &str, mut inner_a
                 },
                 _ => { bail!("Character move directive needs position argument [\"center\", \"left\", \"right\", \"invisible left\", \"invisible right\"]"); }
             };
-            StageCommand::CharacterChange { character: character.to_string(), operation: CharacterOperation::Move(position) }
+            StageCommand::CharacterChange { character: character.to_string(), operation: ActorOperation::Move(position) }
         }
         other => bail!("Unexpected action in Character Direction Directive command: {:?}", other)
     };
@@ -378,12 +379,29 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
             let action = inner_action.next()
                 .context("Character action missing action identifier")?;
             match action.as_rule() {
-                Rule::character_spawn_directive => { build_character_spawn_directive(&character, action.as_str(), inner_action)? }
+                Rule::character_spawn_directive     => { build_character_spawn_directive(&character, action.as_str(), inner_action)? }
                 Rule::character_direction_directive => { build_character_direction_directive(&character, action.as_str(), inner_action)? },
-                Rule::character_movement_directive => { build_character_movement_directive(&character, action.as_str(), inner_action)? },
+                Rule::character_movement_directive  => { build_character_movement_directive(&character, action.as_str(), inner_action)? },
                 other => { bail!("Unexpected rule in character_action {:?}", other); }
             }
         },
+        Rule::animation_change => {
+            let mut inner_rules = command_pair.into_inner().peekable();
+            let animation = inner_rules.next()
+                .context("Animation change missing animation identifier")?
+                .as_str()
+                .trim()
+                .trim_matches('"')
+                .to_owned();
+            info!("inserting name: |{animation}|");
+            let spawn_directive = inner_rules.next()
+                .context(format!("Animation change missing spawn_directive"))?;
+            ensure!(spawn_directive.as_rule() == Rule::character_spawn_directive,
+                "Expected spawn directive, found {:?}", spawn_directive.as_rule());
+            
+            StageCommand::AnimationChange { animation, operation: ActorOperation::Spawn(SpawnInfo::default()) }
+            
+        }
         other => bail!("Unexpected rule in stage command: {:?}", other)
     };
 
@@ -436,7 +454,7 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
 
             Some(Statement::Stage(StageCommand::CharacterChange {
                 character: character.clone(),
-                operation: CharacterOperation::EmotionChange(emotion_name_pair.as_str().to_owned())
+                operation: ActorOperation::EmotionChange(emotion_name_pair.as_str().to_owned())
             }))
         },
         _ => None
@@ -532,19 +550,15 @@ pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
                 let mut statements = Vec::new();
                 for statement_pair in inner_rules {
                     let stmt = match statement_pair.as_rule() {
-                        Rule::code => build_code_statement(statement_pair)
-                            .context("Failed to build code statement")?,
-                        Rule::stage_command => build_stage_command(statement_pair)
-                            .context("Failed to build stage command")?,
+                        Rule::code => build_code_statement(statement_pair)?,
+                        Rule::stage_command => build_stage_command(statement_pair)?,
                         Rule::text_item => {
                             let text_item = statement_pair.into_inner().next()
                                 .context("No text item rule found")?;
                             match text_item.as_rule() {
-                                Rule::infotext => build_infotext(text_item)
-                                    .context("Failed to build infotext")?,
+                                Rule::infotext => build_infotext(text_item)?,
                                 Rule::dialogue => {
-                                    let mut inner_statements = build_dialogue(text_item)
-                                        .context("Failed to build dialogue")?;
+                                    let mut inner_statements = build_dialogue(text_item.clone())?;
                                     statements.extend(inner_statements.drain(..));
         
                                     continue;

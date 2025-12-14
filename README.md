@@ -159,3 +159,4 @@ We welcome contributions! Here are some areas where you can help:
 ## Assets credits
 
 - Ui Panels (9 slice types) made by [BDragon1727](https://bdragon1727.itch.io/custom-border-and-panels-menu-all-part)
+- Fire animation made by [Devkidd](https://devkidd.itch.io/pixel-fire-asset-pack)
