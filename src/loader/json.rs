@@ -1,7 +1,7 @@
 use bevy::asset::AssetLoader;
 use thiserror::Error;
 
-use crate::character::{CharacterConfig, controller::{ActorConfig, AnimationConfig}};
+use crate::actor::{CharacterConfig, controller::{ActorConfig, AnimationConfig}};
 
 #[derive(Debug, Error)]
 pub enum ActorJsonError {

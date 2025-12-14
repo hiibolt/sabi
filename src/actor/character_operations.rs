@@ -1,7 +1,7 @@
 use std::ops::Index;
 use anyhow::Context;
 use bevy::prelude::*;
-use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, controller::{CharacterPosition, FadingActors, MovingActors, SpriteKey}}, compiler::controller::SabiState};
+use crate::{VisualNovelState, actor::{CharacterConfig, controller::{ActorConfig, ActorPosition, CharactersResource, FadingActors, MovingActors, SpriteKey}}, compiler::controller::SabiState};
 use crate::compiler::controller::UiRoot;
 
 const MOVEMENT_STEP: f32 = 0.4;
@@ -21,7 +21,7 @@ pub fn change_character_emotion(
        outfit: config.outfit.clone(),
        emotion: emotion.to_owned()
    };
-   let sprite = sprites.0.get(&sprite_key).with_context(|| format!("Sprite not found for {:?}", sprite_key))?;
+   let sprite = sprites.0.get(&sprite_key).context(format!("Sprite not found for {:?}", sprite_key))?;
    image.image = sprite.clone();
    
    Ok(())
@@ -105,50 +105,83 @@ pub fn apply_alpha(
         game_state.blocking = false;
     }
 }
-pub fn spawn_character(
+pub fn spawn_actor(
     commands: &mut Commands,
-    character_config: CharacterConfig,
+    actor_config: ActorConfig,
     sprites: &Res<CharactersResource>,
     fading: bool,
-    fading_characters: &mut ResMut<FadingActors>,
+    fading_actors: &mut ResMut<FadingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
     images: &Res<Assets<Image>>,
-    position: CharacterPosition,
+    position: ActorPosition,
 ) -> Result<(), BevyError> {
-    let sprite_key = SpriteKey {
-        character: character_config.name.clone(),
-        outfit: character_config.outfit.clone(),
-        emotion: character_config.emotion.clone(),
+    let actor_entity = match actor_config {
+        ActorConfig::Character(actor_config) => {
+            let sprite_key = SpriteKey {
+                character: actor_config.name.clone(),
+                outfit: actor_config.outfit.clone(),
+                emotion: actor_config.emotion.clone(),
+            };
+            let image = sprites.0.get(&sprite_key).context(format!("No sprite found for {:?}", sprite_key))?;
+            let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
+            let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+            commands.spawn(
+                (
+                    ImageNode {
+                        image: image.clone(),
+                        color: Color::default().with_alpha(if fading {
+                            0.
+                        } else { 1. }),
+                        ..default()
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        max_height: percent(75.),
+                        bottom: percent(0.),
+                        aspect_ratio: Some(aspect_ratio),
+                        // left: percent(position.to_percentage_value()),
+                        ..default()
+                    },
+                    ZIndex(CHARACTERS_Z_INDEX),
+                    Character,
+                    actor_config,
+                    DespawnOnExit(SabiState::Running)
+                )
+            ).id()
+        },
+        ActorConfig::Animation(actor_config) => {
+            let sprite_key = actor_config.name;
+            let image = sprites.0.get(&sprite_key).context(format!("No sprite found for {:?}", sprite_key))?;
+            let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
+            let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+            commands.spawn(
+                (
+                    ImageNode {
+                        image: image.clone(),
+                        color: Color::default().with_alpha(if fading {
+                            0.
+                        } else { 1. }),
+                        ..default()
+                    },
+                    Node {
+                        position_type: PositionType::Absolute,
+                        max_height: percent(75.),
+                        bottom: percent(0.),
+                        aspect_ratio: Some(aspect_ratio),
+                        // left: percent(position.to_percentage_value()),
+                        ..default()
+                    },
+                    ZIndex(CHARACTERS_Z_INDEX),
+                    Character,
+                    actor_config,
+                    DespawnOnExit(SabiState::Running)
+                )
+            ).id()
+        }
     };
-    let image = sprites.0.get(&sprite_key).with_context(|| format!("No sprite found for {:?}", sprite_key))?;
-    let image_asset = images.get(image).with_context(|| format!("Asset not found for {:?}", image))?;
-    let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
-    let character_entity = commands.spawn(
-        (
-            ImageNode {
-                image: image.clone(),
-                color: Color::default().with_alpha(if fading {
-                    0.
-                } else { 1. }),
-                ..default()
-            },
-            Node {
-                position_type: PositionType::Absolute,
-                max_height: percent(75.),
-                bottom: percent(0.),
-                aspect_ratio: Some(aspect_ratio),
-                left: percent(position.to_percentage_value()),
-                ..default()
-            },
-            ZIndex(CHARACTERS_Z_INDEX),
-            Character,
-            character_config,
-            DespawnOnExit(SabiState::Running)
-        )
-    ).id();
-    commands.entity(ui_root.entity()).add_child(character_entity);
+    commands.entity(ui_root.entity()).add_child(actor_entity);
     if fading {
-        fading_characters.0.push((character_entity, 0.01, false));
+        fading_actors.0.push((actor_entity, 0.01, false));
     }
     Ok(())
 }

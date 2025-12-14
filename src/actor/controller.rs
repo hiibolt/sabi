@@ -1,10 +1,10 @@
 use std::{any::TypeId, collections::HashMap, path::PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
-use crate::{VisualNovelState, character::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_character}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
+use crate::{VisualNovelState, actor::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
 use crate::compiler::controller::UiRoot;
 
 pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
@@ -38,7 +38,7 @@ impl From<SabiState> for CharacterControllerState {
 
 /* Components */
 #[derive(Component, Debug, Default, Asset, TypePath, Deserialize, Clone)]
-pub struct CharacterConfig {
+pub(crate) struct CharacterConfig {
     pub name: String,
     pub outfit: String,
     pub emotion: String,
@@ -47,7 +47,8 @@ pub struct CharacterConfig {
     pub outfits: Vec<String>,
 }
 #[derive(Component, Debug, Default, Asset, TypePath, Deserialize, Clone)]
-pub struct AnimationConfig {
+pub(crate) struct AnimationConfig {
+    pub name: String,
     pub width: usize,
     pub height: usize,
     pub fps: usize,
@@ -55,15 +56,29 @@ pub struct AnimationConfig {
     pub columns: usize,
     pub start_index: usize,
     pub end_index: usize,
+    pub once: bool,
+    pub disabled: bool,
 }
 #[derive(Component, Debug, Asset, TypePath, Deserialize, Clone)]
-pub enum ActorConfig {
+pub(crate) enum ActorConfig {
     Character(CharacterConfig),
     Animation(AnimationConfig),
 }
 
+#[derive(Component, Debug, Clone, PartialEq)]
+pub(crate) enum ActorPosition {
+    Character(CharacterPosition),
+    Animation(AnimationPosition),
+}
+
+impl Default for ActorPosition {
+    fn default() -> Self {
+        Self::Character(CharacterPosition::default())
+    }
+}
+
 #[derive(Component, Default, Debug, Clone, PartialEq)]
-pub enum CharacterPosition {
+pub(crate) enum CharacterPosition {
     #[default]
     Center,
     FarLeft,
@@ -72,6 +87,20 @@ pub enum CharacterPosition {
     Right,
     InvisibleLeft,
     InvisibleRight,
+}
+
+#[derive(Component, Default, Debug, Clone, PartialEq)]
+pub(crate) enum AnimationPosition {
+    #[default]
+    Center,
+    TopLeft,
+    Top,
+    TopRight,
+    Left,
+    Right,
+    BottomLeft,
+    Bottom,
+    BottomRight,
 }
 
 impl CharacterPosition {
@@ -111,9 +140,11 @@ struct HandleToCharactersFolder(Handle<LoadedFolder>);
 #[derive(Resource)]
 struct HandleToAnimationsFolder(Handle<LoadedFolder>);
 #[derive(Resource)]
-pub struct CharactersResource(pub CharacterSprites);
+pub(crate) struct CharactersResource(pub CharacterSprites);
 #[derive(Resource)]
-pub struct AnimationsResource(pub AnimationSprites);
+pub(crate) struct AnimationsResource(pub AnimationSprites);
+// #[derive(Resource)]
+// pub(crate) struct ActorsResource(pub ActorSprites);
 #[derive(Resource, Default, Debug)]
 struct ActorsConfigs(ActorsConfig);
 #[derive(Resource, Default)]
@@ -121,13 +152,17 @@ struct CharFolderLoaded(pub bool);
 #[derive(Resource, Default)]
 struct AnimFolderLoaded(pub bool);
 #[derive(Resource, Default)]
-pub struct FadingActors(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
+pub(crate) struct FadingActors(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
 #[derive(Resource, Default)]
-pub struct MovingActors(pub Vec<(Entity, f32)>); // entity, target_position
+pub(crate) struct MovingActors(pub Vec<(Entity, f32)>); // entity, target_position
 
 /* Custom types */
+pub(crate) enum ActorSprites {
+    Character(CharacterSprites),
+    Animation(AnimationSprites),
+}
 #[derive(Hash, Eq, PartialEq, Debug)]
-pub struct SpriteKey {
+pub(crate) struct SpriteKey {
     pub character: String,
     pub outfit: String,
     pub emotion: String,
@@ -142,10 +177,10 @@ pub enum CharacterDirection {
     Right
 }
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpawnInfo {
     pub emotion: Option<String>,
-    pub position: CharacterPosition,
+    pub position: ActorPosition,
     pub fading: bool,
 }
 
@@ -272,10 +307,10 @@ fn define_animations_map(
     for handle in &loaded_folder.handles {
         if handle.type_id() == TypeId::of::<ActorConfig>() {
             let concrete_config = config_res.get(&handle.clone().typed::<ActorConfig>()).context("Could not find concrete configuration")?;
-            let concrete_config = if let ActorConfig::Animation(a) = concrete_config {
-                a
+            let config = if let ActorConfig::Animation(config) = concrete_config {
+                config
             } else { continue };
-            animations_configs.insert("fire".into(), ActorConfig::Animation(concrete_config.clone()));
+            animations_configs.insert(config.name.clone(), ActorConfig::Animation(config.clone()));
         } else {
             let path = handle.path().context("Error retrieving animation asset path")?.path();
             let name: String = path.file_stem().context("Animation file has no name")?.to_string_lossy().to_owned().to_string();
@@ -365,11 +400,126 @@ fn wait_trigger(
         controller_state.set(msg.0.into());
     }
 }
+fn exec_char_operation(
+    character_config: &mut CharacterConfig,
+    operation: &ActorOperation,
+    mut character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    mut commands: &mut Commands,
+    mut fading_actors: &mut ResMut<FadingActors>,
+    mut moving_actors: &mut ResMut<MovingActors>,
+    ui_root: &Single<Entity, With<UiRoot>>,
+    mut game_state: &mut ResMut<VisualNovelState>,
+    actor_sprites: &Res<CharactersResource>,
+    images: &Res<Assets<Image>>,
+) -> Result<(), BevyError> {
+    match operation {
+        ActorOperation::Spawn(info) => {
+            let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
+            character_config.emotion = emotion.clone();
+            if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
+                warn!("Another instance of the character is already in the World!");
+            }
+            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
+            if info.fading {
+                game_state.blocking = true;
+            }
+        },
+        ActorOperation::EmotionChange(emotion) => {
+            if !character_config.emotions.contains(&emotion) {
+                return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
+            }
+            let mut entity = match character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
+                Some(e) => e,
+                None => {
+                    let warn_message = format!("Character {} not found in the World!", character_config.name);
+                    warn!(warn_message);
+                    return Ok(());
+                }
+            };
+            change_character_emotion(&mut entity.2, &actor_sprites, emotion, character_config)?;
+        },
+        ActorOperation::Despawn(fading) => {
+            if *fading {
+                for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
+                    fading_actors.0.push((entity.0, -0.01, true));
+                }
+                game_state.blocking = true;
+            } else {
+                for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
+                    commands.entity(entity.0).despawn();
+                }
+            }
+        },
+        ActorOperation::Look(direction) => {
+            for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+                image.flip_x = direction == &CharacterDirection::Left;
+            }
+        },
+        ActorOperation::Move(position) => {
+            for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+                let target_position = position.to_percentage_value();
+                moving_actors.0.push((entity, target_position));
+                game_state.blocking = true;
+            }
+        }
+    }
+    Ok(())
+}
+fn exec_anim_operation(
+    anim_config: &mut AnimationConfig,
+    operation: &ActorOperation,
+    mut character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    mut commands: &mut Commands,
+    mut fading_actors: &mut ResMut<FadingActors>,
+    mut moving_actors: &mut ResMut<MovingActors>,
+    ui_root: &Single<Entity, With<UiRoot>>,
+    mut game_state: &mut ResMut<VisualNovelState>,
+    char_sprites: &Res<CharactersResource>,
+    images: &Res<Assets<Image>>,
+) -> Result<(), BevyError> {
+    match operation {
+        ActorOperation::Spawn(info) => {
+            if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == anim_config.name) {
+                warn!("Another instance of the animation is already in the World!");
+            }
+            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &char_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
+            if info.fading {
+                game_state.blocking = true;
+            }
+        },
+        ActorOperation::Despawn(fading) => {
+            if *fading {
+                for entity in character_query.iter().filter(|c| c.1.name == anim_config.name) {
+                    fading_actors.0.push((entity.0, -0.01, true));
+                }
+                game_state.blocking = true;
+            } else {
+                for entity in character_query.iter().filter(|c| c.1.name == anim_config.name) {
+                    commands.entity(entity.0).despawn();
+                }
+            }
+        },
+        ActorOperation::Look(direction) => {
+            for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == anim_config.name) {
+                image.flip_x = direction == &CharacterDirection::Left;
+            }
+        },
+        ActorOperation::Move(position) => {
+            for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == anim_config.name) {
+                let target_position = position.to_percentage_value();
+                moving_actors.0.push((entity, target_position));
+                game_state.blocking = true;
+            }
+        },
+        other => { return Err(anyhow::anyhow!("Invalid operation on animation {other:?}").into()); }
+    }
+    Ok(())
+}
 fn update_actors(
     mut commands: Commands,
     mut character_query: Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
     ui_root: Single<Entity, With<UiRoot>>,
-    sprites: Res<CharactersResource>,
+    char_sprites: Res<CharactersResource>,
     mut actor_configs: ResMut<ActorsConfigs>,
     mut fading_actors: ResMut<FadingActors>,
     mut moving_actors: ResMut<MovingActors>,
@@ -381,59 +531,9 @@ fn update_actors(
     for msg in actor_change_message.read() {
         info!("configs: {actor_configs:#?} name: {:#?}", msg.name);
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
-        let character_config = if let ActorConfig::Character(c) = actor_config {
-            c
-        } else { continue; };
-        match &msg.operation {
-            ActorOperation::Spawn(info) => {
-                let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
-                character_config.emotion = emotion.clone();
-                if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
-                    warn!("Another instance of the character is already in the World!");
-                }
-                spawn_character(&mut commands, character_config.clone(), &sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
-                if info.fading {
-                    game_state.blocking = true;
-                }
-            },
-            ActorOperation::EmotionChange(emotion) => {
-                if !character_config.emotions.contains(&emotion) {
-                    return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
-                }
-                let mut entity = match character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
-                    Some(e) => e,
-                    None => {
-                        let warn_message = format!("Character {} not found in the World!", character_config.name);
-                        warn!(warn_message);
-                        return Ok(());
-                    }
-                };
-                change_character_emotion(&mut entity.2, &sprites, emotion, character_config)?;
-            },
-            ActorOperation::Despawn(fading) => {
-                if *fading {
-                    for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
-                        fading_actors.0.push((entity.0, -0.01, true));
-                    }
-                    game_state.blocking = true;
-                } else {
-                    for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
-                        commands.entity(entity.0).despawn();
-                    }
-                }
-            },
-            ActorOperation::Look(direction) => {
-                for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
-                    image.flip_x = direction == &CharacterDirection::Left;
-                }
-            },
-            ActorOperation::Move(position) => {
-                for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
-                    let target_position = position.to_percentage_value();
-                    moving_actors.0.push((entity, target_position));
-                    game_state.blocking = true;
-                }
-            }
+        match actor_config {
+            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &char_sprites, &images)?,
+            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &char_sprites, &images)?,
         }
     }
 

@@ -1,9 +1,12 @@
 {
-  "width": 50,
-  "height": 50,
+  "name": "fire",
+  "width": 32,
+  "height": 48,
   "fps": 3,
   "rows": 1,
-  "columns": 5,
+  "columns": 8,
   "start_index": 0,
-  "end_index": 4
+  "end_index": 7,
+  "once": false,
+  "disabled": false
 }

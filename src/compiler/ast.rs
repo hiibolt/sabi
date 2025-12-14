@@ -6,9 +6,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::{
-    background::controller::{BackgroundDirection, BackgroundOperation},
-    character::{ActorOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}},
-    chat::controller::{GuiChangeTarget, GuiImageMode}
+    actor::{ActorOperation, controller::{ActorPosition, CharacterDirection, CharacterPosition, SpawnInfo}}, background::controller::{BackgroundDirection, BackgroundOperation}, chat::controller::{GuiChangeTarget, GuiImageMode}
 };
 
 #[derive(Parser)]
@@ -207,7 +205,7 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                             Ok(pos) => pos,
                             Err(e) => bail!(e)
                         };
-                        info.position = position;
+                        info.position = ActorPosition::Character(position);
                     }
                     _ => {added_action = None;}
                 };

@@ -1,13 +1,13 @@
 mod background;
-mod character;
+mod actor;
 mod chat;
 mod compiler;
 mod loader;
 
 use crate::background::*;
-use crate::character::controller::ActorConfig;
-use crate::character::controller::AnimationConfig;
-use crate::character::*;
+use crate::actor::controller::ActorConfig;
+use crate::actor::controller::AnimationConfig;
+use crate::actor::*;
 use crate::chat::*;
 use crate::compiler::ast::Evaluate;
 use crate::compiler::ast::Statement;

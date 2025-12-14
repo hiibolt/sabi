@@ -1,4 +1,4 @@
-use crate::character::ActorChangeMessage;
+use crate::actor::ActorChangeMessage;
 use crate::chat::controller::InfoTextMessage;
 use crate::compiler::ast::Statement;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};

@@ -1,4 +1,4 @@
-use crate::character::controller::ActorType;
+use crate::actor::controller::ActorType;
 use crate::chat::controller::InfoTextMessage;
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, ActorChangeMessage, VisualNovelState};
 use crate::compiler::ast::{CodeStatement, Dialogue, Evaluate, InfoText, StageCommand, Statement, TextItem};
