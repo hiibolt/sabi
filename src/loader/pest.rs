@@ -3,7 +3,7 @@ use bevy::asset::AssetLoader;
 use pest::Parser;
 use thiserror::Error;
 
-use crate::compiler::ast::{Act, Rule, SabiParser, build_scenes};
+use crate::{compiler::ast::{Act, Rule, SabiParser, build_scenes}};
 
 #[derive(Debug, Error)]
 pub(crate) enum PestLoaderError {
@@ -28,18 +28,22 @@ impl AssetLoader for PestLoader {
         &self,
         reader: &mut dyn bevy::asset::io::Reader,
         _settings: &Self::Settings,
-        _load_context: &mut bevy::asset::LoadContext,
+        load_context: &mut bevy::asset::LoadContext,
     ) -> impl bevy::tasks::ConditionalSendFuture<Output = std::result::Result<Self::Asset, Self::Error>> {
+
         Box::pin(async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
             let script_contents = String::from_utf8(bytes)?;
             let scene_pair = SabiParser::parse(Rule::act, &script_contents)?.next().context("Script file is empty")?;
-            let act = build_scenes(scene_pair)?;
+            let mut act = build_scenes(scene_pair)?;
+            let path = load_context.asset_path().path();
+            let file_name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("");
+            act.name = file_name.into();
             Ok(act)
         })
     }
-    
+
     fn extensions(&self) -> &[&str] {
         &["sabi"]
     }

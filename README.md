@@ -155,3 +155,7 @@ We welcome contributions! Here are some areas where you can help:
 - Built with [Bevy Engine](https://bevyengine.org/)
 - Development environment managed with [Nix](https://nixos.org/)
 - Special thanks to the Rust and game development communities
+
+## Assets credits
+
+- Ui Panels (9 slice types) made by [BDragon1727](https://bdragon1727.itch.io/custom-border-and-panels-menu-all-part)

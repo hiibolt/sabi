@@ -12,7 +12,7 @@ CURTAIN
 SCENE character_spawning
     Nayu: "First functionality, obviously, regards spawning"
     (Nayu appears)
-    Nayu: "This is the most simple example, and it can be achieved by calling appear/disappears in .sabi files"
+    Nayu: "This is the most simple example, and it can be achieved by calling appears/disappears in .sabi files"
     Nayu: "Check the docs on syntax file!"
     (Nayu disappears)
     (Nayu fade in)

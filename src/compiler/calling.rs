@@ -51,15 +51,17 @@ impl Invoke for StageCommand {
                     operation: operation.clone(),
                 });
             },
-            StageCommand::GUIChange { gui_target, sprite_expr } => {
+            StageCommand::GUIChange { gui_target, sprite_expr, image_mode } => {
                 let gui_target = gui_target.clone();
                 let sprite_id = sprite_expr.evaluate_into_string()
                     .context("...while evaluating GUIChange sprite expression")?;
+                let image_mode = image_mode.clone();
                 
                 info!("Invoking StageCommand::GUIChange to {:?}'s {}", gui_target, sprite_id);
                 ctx.gui_change_message.write(GUIChangeMessage {
                     gui_target,
-                    sprite_id
+                    sprite_id,
+                    image_mode,
                 });
             },
             StageCommand::SceneChange { scene_expr } => {

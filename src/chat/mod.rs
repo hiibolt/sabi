@@ -1,8 +1,10 @@
-pub mod controller;
-mod ui_provider;
+pub(crate) mod controller;
+mod ui;
 
-pub use controller::ChatController;
-pub use controller::GUIScrollText;
-pub use controller::ChatScrollStopwatch;
-pub use controller::CharacterSayMessage;
-pub use controller::GUIChangeMessage;
+pub(crate) use controller::ChatController;
+pub(crate) use controller::GUIScrollText;
+pub(crate) use controller::ChatScrollStopwatch;
+pub(crate) use controller::CharacterSayMessage;
+pub(crate) use controller::GUIChangeMessage;
+
+const UI_Z_INDEX: i32 = 4;

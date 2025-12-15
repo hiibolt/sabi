@@ -8,6 +8,9 @@ use anyhow::Context;
 use crate::VisualNovelState;
 use crate::compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot};
 
+const BACKGROUND_Z_INDEX: i32 = 1;
+const BACKGROUNDS_ASSET_PATH: &str   = "sabi/backgrounds";
+
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
 enum BackgroundControllerState {
@@ -78,7 +81,7 @@ impl Plugin for BackgroundController {
         app.add_message::<BackgroundChangeMessage>()
             .init_state::<BackgroundControllerState>()
             .init_resource::<Dissolving>()
-            .add_systems(Update, check_state_change.run_if(in_state(BackgroundControllerState::Idle)))
+            .add_systems(Update, check_state_change)
             .add_systems(OnEnter(BackgroundControllerState::Loading), import_backgrounds_folder)
             .add_systems(Update, check_loading_state.run_if(in_state(BackgroundControllerState::Loading)))
             .add_systems(Update, (
@@ -126,12 +129,13 @@ fn check_loading_state(
                 commands.entity(ui_root.entity()).with_child((
                     ImageNode::default(),
                     Node {
-                        width: Val::Percent(100.),
-                        height: Val::Percent(100.),
+                        width: percent(100.),
+                        height: percent(100.),
                         position_type: PositionType::Absolute,
                         ..default()
                     },
                     Transform::default(),
+                    ZIndex(BACKGROUND_Z_INDEX),
                     BackgroundNode,
                     DespawnOnEnter(SabiState::Idle),
                 ));
@@ -150,7 +154,7 @@ fn check_loading_state(
 /// Initiate import procedure and insert [bevy::asset::LoadedFolder] handle into [HandleToBackgroundsFolder] resource.
 /// Currently only "backgrounds" folder in bevy "assets" root is supported
 fn import_backgrounds_folder(mut commands: Commands, asset_server: Res<AssetServer>){
-    let loaded_folder = asset_server.load_folder("backgrounds");
+    let loaded_folder = asset_server.load_folder(BACKGROUNDS_ASSET_PATH);
     commands.insert_resource(HandleToBackgroundsFolder(loaded_folder));
 }
 /// Checks for state changes from main controller when in [BackgroundControllerState::Idle] state

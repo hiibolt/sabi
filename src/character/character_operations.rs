@@ -5,6 +5,7 @@ use crate::{VisualNovelState, character::{CharacterConfig, CharactersResource, c
 use crate::compiler::controller::UiRoot;
 
 const MOVEMENT_STEP: f32 = 0.4;
+const CHARACTERS_Z_INDEX: i32 = 3;
 
 #[derive(Component)]
 pub struct Character;
@@ -51,7 +52,7 @@ pub fn move_characters(
                     continue;
                 }
             };
-            node.left = Val::Percent(new_value);
+            node.left = percent(new_value);
             if new_value == target_pos.1 {
                 moving_characters.0.remove(index);
             }
@@ -133,13 +134,13 @@ pub fn spawn_character(
             },
             Node {
                 position_type: PositionType::Absolute,
-                max_height: Val::Percent(75.),
-                bottom: Val::Percent(0.),
+                max_height: percent(75.),
+                bottom: percent(0.),
                 aspect_ratio: Some(aspect_ratio),
-                left: Val::Percent(position.to_percentage_value()),
+                left: percent(position.to_percentage_value()),
                 ..default()
             },
-            ZIndex(2),
+            ZIndex(CHARACTERS_Z_INDEX),
             Character,
             character_config,
             DespawnOnEnter(SabiState::Idle)

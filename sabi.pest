@@ -4,7 +4,7 @@ WHITESPACE = _{ " " | "\t" | NEWLINE }
 //  enum for its statements
 act = { SOI ~ scene+ ~ EOI }
 scene = { "SCENE " ~ scene_name ~ statement* ~ "CURTAIN" }
-    scene_name = @{ (ASCII_ALPHANUMERIC+ | "_" | "-")+ }
+scene_name = @{ (ASCII_ALPHANUMERIC+ | "_" | "-")+ }
 
 // There are three types of statements
 //  1. Code statements for logic, etc
@@ -24,8 +24,8 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
         scene_change |
         act_change |
         character_change }
-    gui_change = { "GUI" ~ gui_element ~ "changes" ~ "to" ~ expr }
     background_change = { background_directive }
+    gui_change = { "GUI" ~ gui_element ~ "changes" ~ "to" ~ expr ~ image_mode? }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
@@ -59,8 +59,7 @@ character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
 gui_element = { "textbox" | "namebox" }
-
-// Character definitions
+image_mode = { "sliced" | "auto" }
 character_spawn_directive = {
                                 "appears" |
                                 "disappears" |

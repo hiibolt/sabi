@@ -1,13 +1,17 @@
 use crate::character::CharacterChangeMessage;
+use crate::compiler::ast::Statement;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
-
+use crate::{Cursor, HistoryItem, SabiEnd, ast};
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, SabiStart, ScriptId, VisualNovelState};
-use crate::compiler::ast::Act;
+
 use std::collections::HashMap;
+use std::path::PathBuf;
 use bevy::asset::{LoadState, LoadedFolder};
 use bevy::color::palettes::css::{BLACK, WHITE};
 use bevy::prelude::*;
 use anyhow::{Context, Result};
+
+const SCRIPTS_ASSET_PATH: &str = "sabi/acts";
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -48,7 +52,7 @@ pub enum Controller {
 struct HandleToScriptsFolder(Handle<LoadedFolder>);
 #[derive(Resource, Default)]
 struct ScriptsResource(ScriptsMap);
-type ScriptsMap = HashMap<ScriptId, Handle<Act>>;
+type ScriptsMap = HashMap<ScriptId, Handle<ast::Act>>;
 #[derive(Resource)]
 struct CurrentScript(pub ScriptId);
 
@@ -64,9 +68,10 @@ impl Plugin for Compiler {
             .add_message::<SceneChangeMessage>()
             .add_message::<ActChangeMessage>()
             .add_message::<SabiStart>()
+            .add_message::<SabiEnd>()
             .add_systems(OnEnter(SabiState::Idle), propagate_state)
             .add_systems(Update, check_start.run_if(in_state(SabiState::Idle)))
-            .add_systems(OnEnter(SabiState::WaitingForControllers), 
+            .add_systems(OnEnter(SabiState::WaitingForControllers),
                 (
                     spawn_ui_root,
                     propagate_state,
@@ -82,19 +87,21 @@ fn trigger_running_controllers(
     mut visual_novel_state: ResMut<VisualNovelState>,
     current_script: Res<CurrentScript>,
     scripts_resource: Res<ScriptsResource>,
-    acts: Res<Assets<Act>>,
+    acts: Res<Assets<ast::Act>>,
 ) -> Result<(), BevyError> {
     let act_handle = scripts_resource.0.get(&current_script.0)
         .context("Could not find script handle")?;
     let act = acts.get(act_handle.id())
         .context("Could not find script element")?;
-    
+
     visual_novel_state.act = Box::new(act.clone());
-    visual_novel_state.statements = act.scenes.get(&act.entrypoint)
+    visual_novel_state.statements = Cursor::new(act.scenes.get(&act.entrypoint)
         .context("Error retrieving act entrypoint")?
-        .statements.clone().into_iter();
+        .statements.clone());
+    visual_novel_state.history.push(HistoryItem::Descriptor(format!("Act: {}\n", act.name)));
+    visual_novel_state.history.push(HistoryItem::Descriptor(format!("Scene: {}\n", act.entrypoint)));
     visual_novel_state.blocking = false;
-    
+
     msg_writer.write(ControllersSetStateMessage(SabiState::Running));
     Ok(())
 }
@@ -119,7 +126,7 @@ fn import_scripts_folder(
     mut commands: Commands,
     asset_server: Res<AssetServer>
 ) {
-    let loaded_folder = asset_server.load_folder("acts");
+    let loaded_folder = asset_server.load_folder(SCRIPTS_ASSET_PATH);
     commands.insert_resource(HandleToScriptsFolder(loaded_folder));
 }
 fn spawn_ui_root(
@@ -127,19 +134,20 @@ fn spawn_ui_root(
 ) {
     commands.spawn((
         Node {
-            width: Val::Percent(100.),
-            height: Val::Percent(100.),
+            width: percent(100.),
+            height: percent(100.),
             align_items: AlignItems::FlexEnd,
             justify_content: JustifyContent::Center,
             ..default()
         },
         BackgroundColor(Color::NONE.into()),
+        GlobalTransform::default(),
         UiRoot,
         children![
             (
                 Node {
-                    width: Val::Percent(100.),
-                    height: Val::Percent(100.),
+                    width: percent(100.),
+                    height: percent(100.),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     ..default()
@@ -155,22 +163,24 @@ fn spawn_ui_root(
                         }
                     )
                 ],
-                GlobalZIndex(100),
+                ZIndex(100),
                 DespawnOnExit(SabiState::WaitingForControllers)
             )
         ]
     ));
 }
 fn define_script_entry(
-    handle: Handle<Act>
-) -> Result<(ScriptId, Handle<Act>), BevyError> {
+    handle: Handle<ast::Act>
+) -> Result<(ScriptId, Handle<ast::Act>), BevyError> {
     let path = match handle.path() {
         Some(asset_path) => asset_path.path(),
         None => { return Err(anyhow::anyhow!("Error retrieving script path").into()) }
     };
     
-    let script_id = if path.iter().count() == 3 {
-        let chapter = path.components().nth(1)
+    let expected_len = PathBuf::from(SCRIPTS_ASSET_PATH).iter().count() + 2;
+
+    let script_id = if path.iter().count() == expected_len {
+        let chapter = path.components().nth(expected_len - 2)
             .context("Chapter component is not valid")?
             .as_os_str().to_str().context("Could not convert chapter path to os_str")?
             .to_owned();
@@ -214,7 +224,7 @@ fn check_states(
             }
         }
     }
-    
+
     for event in msg_controller_reader.read() {
         let controller = match event.0 {
             Controller::Background => &mut controllers_state.background_controller,
@@ -233,22 +243,47 @@ fn check_states(
 }
 fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut game_state: ResMut<'a, VisualNovelState>,
-    
     mut character_say_message: MessageWriter<'b, CharacterSayMessage>,
     mut background_change_message: MessageWriter<'c, BackgroundChangeMessage>,
     mut gui_change_message: MessageWriter<'d, GUIChangeMessage>,
     mut scene_change_message: MessageWriter<'e, SceneChangeMessage>,
     mut act_change_message: MessageWriter<'f, ActChangeMessage>,
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
-    
-    mut state: ResMut<NextState<SabiState>>,
 
+    mut state: ResMut<NextState<SabiState>>,
+    mut ev_controller_writer: MessageWriter<ControllersSetStateMessage>,
+    mut ev_writer: MessageWriter<SabiEnd>,
 ) -> Result<(), BevyError> {
+
     if game_state.blocking {
         return Ok(());
     }
 
-    if let Some(statement) = game_state.statements.next() {
+    let next_statement = if game_state.rewinding > 0 {
+        info!("rewinding {}", game_state.rewinding);
+        game_state.rewinding -= 1;
+        let next_statement = match game_state.statements.prev() {
+            Some(Statement::Dialogue(d)) => Some(Statement::Dialogue(d)),
+            Some(Statement::Stage(_)) => {
+                game_state.statements.find_previous()
+            },
+            // todo: Statement::Code currently not handled
+            // is history field needed?
+            _ => { None }
+        };
+        if let Some(_) = &next_statement {
+            let _ = game_state.history.pop();
+        }
+        next_statement
+    } else {
+        let next_statement = game_state.statements.next();
+        if let Some(stm) = &next_statement {
+            game_state.history.push(HistoryItem::Statement(stm.clone()));
+        }
+        next_statement
+    };
+
+    if let Some(statement) = next_statement {
         statement.invoke(InvokeContext {
                 game_state: &mut game_state,
                 character_say_message: &mut character_say_message,
@@ -262,6 +297,8 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     } else {
         info!("Finished scripts!");
         state.set(SabiState::Idle);
+        ev_controller_writer.write(ControllersSetStateMessage(SabiState::Idle));
+        ev_writer.write(SabiEnd);
     }
 
     Ok(())
@@ -272,12 +309,13 @@ fn handle_scene_changes(
 ) -> Result<(), BevyError> {
     for msg in scene_change_messages.read() {
         let new_scene = game_state.act.scenes.get(&msg.scene_id)
-            .with_context(|| format!("Scene '{}' not found in current act", msg.scene_id))?
+            .context(format!("Scene '{}' not found in current act", msg.scene_id))?
             .clone();
-        
+
         info!("Changing to scene: {}", msg.scene_id);
-        game_state.scene = new_scene;
-        game_state.statements = game_state.scene.statements.clone().into_iter();
+        game_state.scene = new_scene.clone();
+        game_state.statements = Cursor::new(game_state.scene.statements.clone());
+        game_state.history.push(HistoryItem::Descriptor(format!("Scene {}", new_scene.name)));
         game_state.blocking = false;
         info!("[ Scene changed to '{}' ]", msg.scene_id);
     }
@@ -289,25 +327,26 @@ fn handle_act_changes(
     mut game_state: ResMut<VisualNovelState>,
     mut current_script: ResMut<CurrentScript>,
     scripts_resource: Res<ScriptsResource>,
-    scripts_assets: Res<Assets<Act>>,
+    scripts_assets: Res<Assets<ast::Act>>,
 ) -> Result<(), BevyError> {
     for msg in act_change_messages.read() {
         current_script.0.act = msg.act_id.clone();
-        let act_handle = scripts_resource.0.get(&current_script.0).with_context(|| format!("Could not find act handle for {}", current_script.0.act))?;
-        let act = scripts_assets.get(act_handle).with_context(|| format!("Could not find act {:?}", act_handle))?;
-        
+        let act_handle = scripts_resource.0.get(&current_script.0).context(format!("Could not find act handle for {}", current_script.0.act))?;
+        let act = scripts_assets.get(act_handle).context(format!("Could not find act {:?}", act_handle))?;
+
         info!("Changing to act: {}", current_script.0.act);
-        
+
         let entrypoint_scene = act.scenes.get(&act.entrypoint)
-            .with_context(|| format!("Entrypoint scene '{}' not found in act '{}'", act.entrypoint, current_script.0.act))?
+            .context(format!("Entrypoint scene '{}' not found in act '{}'", act.entrypoint, current_script.0.act))?
             .clone();
-        
+
         game_state.act = Box::new(act.clone());
         game_state.scene = entrypoint_scene;
-        game_state.statements = game_state.scene.statements.clone().into_iter();
+        game_state.statements = Cursor::new(game_state.scene.statements.clone());
+        game_state.history.push(HistoryItem::Descriptor(format!("Act {}", act.name)));
         game_state.blocking = false;
-        info!("[ Act changed to '{}', starting at entrypoint scene '{}' ]", msg.act_id, act.entrypoint);
+        info!("[ Act changed to '{}' ]", msg.act_id);
     }
-    
+
     Ok(())
 }

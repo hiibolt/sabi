@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
@@ -14,6 +14,7 @@ pub const LEFT_PERCENTAGE: f32 = 20.;
 pub const CENTER_PERCENTAGE: f32 = 35.;
 pub const RIGHT_PERCENTAGE: f32 = 50.;
 pub const INVISIBLE_RIGHT_PERCENTAGE: f32 = 140.;
+const CHARACTERS_ASSET_PATH: &str = "sabi/characters";
 
 /* States */
 #[derive(States, Debug, Default, Clone, Copy, Hash, Eq, PartialEq)]
@@ -158,7 +159,7 @@ impl Plugin for CharacterController {
             .insert_resource(FadingCharacters::default())
             .add_message::<CharacterChangeMessage>()
             .init_state::<CharacterControllerState>()
-            .add_systems(Update, wait_trigger.run_if(in_state(CharacterControllerState::Idle)))
+            .add_systems(Update, wait_trigger)
             .add_systems(OnEnter(CharacterControllerState::Loading), import_characters)
             .add_systems(Update, setup.run_if(in_state(CharacterControllerState::Loading)))
             .add_systems(Update, (update_characters, apply_alpha, move_characters)
@@ -172,21 +173,22 @@ fn define_characters_map(
 ) -> Result<(), BevyError> {
     let mut characters_sprites = CharacterSprites::new();
     let mut characters_configs = CharactersConfig::new();
+    let expected_len = PathBuf::from(CHARACTERS_ASSET_PATH).iter().count() + 3;
     for handle in &loaded_folder.handles {
         let path = handle
             .path()
             .context("Error retrieving character asset path")?
             .path();
-        let name: String = match path.iter().nth(1).map(|s| s.to_string_lossy().into()) {
+        let name: String = match path.iter().nth(expected_len - 3).map(|s| s.to_string_lossy().into()) {
             Some(name) => name,
             None => continue,
         };
-        if path.iter().count() == 4 {
-            let outfit = match path.iter().nth(2).map(|s| s.to_string_lossy().into()) {
+        if path.iter().count() == expected_len {
+            let outfit = match path.iter().nth(expected_len - 2).map(|s| s.to_string_lossy().into()) {
                 Some(outfit) => outfit,
                 None => continue,
             };
-            let emotion = match path.iter().nth(3) {
+            let emotion = match path.iter().nth(expected_len - 1) {
                 Some(os_str) => {
                     let file = std::path::Path::new(os_str);
                     let name = file.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -201,7 +203,8 @@ fn define_characters_map(
             };
 
             characters_sprites.insert(key, handle.clone().typed());
-        } else if path.iter().count() == 3 {
+            
+        } else if path.iter().count() == expected_len - 1 {
             characters_configs.insert(
                 name.clone(),
                 config_res
@@ -249,7 +252,7 @@ fn setup(
     Ok(())
 }
 fn import_characters(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let loaded_folder = asset_server.load_folder("characters");
+    let loaded_folder = asset_server.load_folder(CHARACTERS_ASSET_PATH);
     commands.insert_resource(HandleToCharactersFolder(loaded_folder));
 }
 fn wait_trigger(

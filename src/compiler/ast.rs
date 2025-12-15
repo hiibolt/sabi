@@ -1,10 +1,15 @@
-use std::{collections::HashMap, iter::Peekable};
-use bevy::{asset::Asset, reflect::TypePath};
+use std::iter::Peekable;
 use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
+use bevy::prelude::*;
+use std::collections::HashMap;
 
-use crate::{background::controller::{BackgroundDirection, BackgroundOperation}, character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}}, chat::controller::GuiChangeTarget};
+use crate::{
+    background::controller::{BackgroundDirection, BackgroundOperation},
+    character::{CharacterOperation, controller::{CharacterDirection, CharacterPosition, SpawnInfo}},
+    chat::controller::{GuiChangeTarget, GuiImageMode}
+};
 
 #[derive(Parser)]
 #[grammar = "../sabi.pest"]
@@ -36,9 +41,8 @@ impl Evaluate for Expr {
     fn evaluate_into_string(&self) -> Result<String> {
         let evaluated = self.evaluate()
             .context("Failed to evaluate expression")?;
-        let res = expr_to_string(&evaluated)
-            .context("Failed to convert evaluated expression to string");
-        res
+        expr_to_string(&evaluated)
+            .context("Failed to convert evaluated expression to string")
     }
     fn evaluate(&self) -> Result<Expr> {
         match self {
@@ -46,7 +50,7 @@ impl Evaluate for Expr {
             Expr::Add { lhs, rhs } => {
                 let left = lhs.evaluate().context("Failed to evaluate left side of addition")?;
                 let right = rhs.evaluate().context("Failed to evaluate right side of addition")?;
-                
+
                 match (&left, &right) {
                     (Expr::Number(l), Expr::Number(r)) => {
                         Ok(Expr::Number(l + r))
@@ -87,6 +91,7 @@ pub(crate) fn expr_to_string(expr: &Expr) -> Result<String> {
 #[derive(Debug, Clone, Default, Asset, TypePath)]
 pub(crate) struct Act {
     pub scenes: HashMap<String, Box<Scene>>,
+    pub name: String,
     pub entrypoint: String,
 }
 
@@ -98,7 +103,7 @@ pub(crate) enum CodeStatement {
 #[derive(Debug, Clone)]
 pub(crate) enum StageCommand {
     BackgroundChange { operation: BackgroundOperation },
-    GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr> },
+    GUIChange { gui_target: GuiChangeTarget, sprite_expr: Box<Expr>, image_mode: GuiImageMode },
     SceneChange { scene_expr: Box<Expr> },
     ActChange { act_expr: Box<Expr> },
     CharacterChange { character: String, operation: CharacterOperation },
@@ -117,10 +122,19 @@ pub(crate) enum Statement {
     Dialogue(Dialogue)
 }
 
-
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scene {
-    pub statements: Vec<Statement>
+    pub name: String,
+    pub statements: Vec<Statement>,
+}
+
+impl PartialEq for Scene {
+    fn eq(&self, other: &Self) -> bool {
+        other.name == self.name
+    }
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
 }
 
 pub(crate) fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr> {
@@ -166,7 +180,7 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                     Some(n) if n.as_rule() == Rule::emotion_name => {
                         let emotion_pair = inner_action.next()
                             .context("Expected emotion pair")?;
-                     
+
                         ensure!(emotion_pair.as_rule() == Rule::emotion_name,
                             "Expected emotion name, found {:?}", emotion_pair.as_rule());
                         info.emotion = Some(emotion_pair.as_str().to_owned());
@@ -174,7 +188,7 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                     Some(n) if n.as_rule() == Rule::character_position => {
                         let position_pair = inner_action.next()
                             .context("Expected position pair")?;
-                        
+
                         ensure!(position_pair.as_rule() == Rule::character_position,
                             "Expecter position, found {:?}", position_pair.as_rule());
                         let position = match CharacterPosition::try_from(position_pair.as_str()) {
@@ -204,13 +218,13 @@ fn build_character_direction_directive(character: &str, action: &str, mut inner_
                     let direction_pair = inner_action.next().context("Expected character direction")?;
                     ensure!(direction_pair.as_rule() == Rule::character_direction,
                         "Expected character direction, found {:?}", direction_pair.as_rule());
-                    
+
                     match direction_pair.as_str() {
                         "left" => CharacterDirection::Left,
                         "right" => CharacterDirection::Right,
                         other => { bail!("Unhandled direction provided {:?}", other); }
                     }
-                    
+
                 },
                 _ => { bail!("Character direction directive needs direction argument [\"left\", \"right\"]"); }
             };
@@ -229,7 +243,7 @@ fn build_character_movement_directive(character: &str, action: &str, mut inner_a
                     let position_pair = inner_action.next().context("Expected character direction")?;
                     ensure!(position_pair.as_rule() == Rule::character_position,
                         "Expected character position, found {:?}", position_pair.as_rule());
-                    
+
                     match CharacterPosition::try_from(position_pair.as_str()) {
                         Ok(pos) => pos,
                         Err(e) => bail!(e)
@@ -245,23 +259,23 @@ fn build_character_movement_directive(character: &str, action: &str, mut inner_a
 }
 
 pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
-    ensure!(pair.as_rule() == Rule::stage_command, 
+    ensure!(pair.as_rule() == Rule::stage_command,
         "Expected stage rule, found {:?}", pair.as_rule());
-    
+
     let command_pair = pair.into_inner().next()
         .context("Stage command missing inner command")?;
-    
+
     let result = match command_pair.as_rule() {
         Rule::background_change => {
             let mut inner = command_pair.into_inner();
             let background_operation = inner.next().context("Background operation missing")?;
             let action = background_operation.into_inner().next().context("Background action missing")?;
-            
+
             ensure!(action.as_rule() == Rule::background_action,
                 "Expected background action, found {:?}", action.as_rule());
-            
+
             let def = action.into_inner().next().context("Invalid background action")?;
-            
+
             let operation = match def.as_rule() {
                 Rule::background_change_def => {
                     let target = def.into_inner().next()
@@ -280,7 +294,7 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                     let direction_rule = def.into_inner().next().context("Background direction missing")?;
                     ensure!(direction_rule.as_rule() == Rule::background_direction,
                         "Expected background direction, found {:?}", direction_rule);
-                    
+
                     let direction = match direction_rule.as_str() {
                         "N" | "North" => BackgroundDirection::North,
                         "S" | "South" => BackgroundDirection::South,
@@ -292,7 +306,7 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                 },
                 _ => { bail!("Invalid background action"); }
             };
-             
+
             StageCommand::BackgroundChange { operation }
         },
         Rule::gui_change => {
@@ -301,20 +315,30 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                 .context("GUI change missing GUI element")?;
             let sprite_expr_pair = inner.next()
                 .context("GUI change missing sprite expression")?;
-            
+
             // Convert gui_element to the appropriate ID
             let gui_target = match gui_element_pair.as_str() {
                 "textbox" => GuiChangeTarget::TextBoxBackground,
                 "namebox" => GuiChangeTarget::NameBoxBackground,
                 other => bail!("Unknown GUI element: {}", other)
             };
-            
+
             let sprite_expr = build_expression(sprite_expr_pair)
                 .context("Failed to build sprite expression for GUI change")?;
-            
-            StageCommand::GUIChange { 
-                gui_target, 
-                sprite_expr: Box::new(sprite_expr) 
+
+            let image_mode = if let Some(image_mode) = inner.next() {
+                ensure!(image_mode.as_rule() == Rule::image_mode,
+                    "Expected image mode, found {:?}", image_mode.as_rule());
+                match image_mode.as_str() {
+                    "sliced" => GuiImageMode::Sliced,
+                    other => bail!("Unrecognized image mode definition: {}", other)
+                }
+            } else { GuiImageMode::Auto };
+
+            StageCommand::GUIChange {
+                gui_target,
+                sprite_expr: Box::new(sprite_expr),
+                image_mode,
             }
         },
         Rule::scene_change => {
@@ -351,17 +375,17 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
         },
         other => bail!("Unexpected rule in stage command: {:?}", other)
     };
-    
+
     Ok(Statement::Stage(result))
 }
 
 pub fn build_code_statement(code_pair: Pair<Rule>) -> Result<Statement> {
-    ensure!(code_pair.as_rule() == Rule::code, 
+    ensure!(code_pair.as_rule() == Rule::code,
         "Expected code rule, found {:?}", code_pair.as_rule());
-    
+
     let statement_pair = code_pair.into_inner().next()
         .context("Code block missing statement")?;
-    
+
     let result = match statement_pair.as_rule() {
         Rule::log => {
             let mut exprs = Vec::new();
@@ -374,33 +398,33 @@ pub fn build_code_statement(code_pair: Pair<Rule>) -> Result<Statement> {
         },
         other => bail!("Unexpected rule in code statement: {:?}", other)
     };
-    
+
     Ok(Statement::Code(result))
 }
 
 pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
-    ensure!(pair.as_rule() == Rule::dialogue, 
+    ensure!(pair.as_rule() == Rule::dialogue,
         "Expected dialogue, found {:?}", pair.as_rule());
-    
+
     let mut inner_rules = pair.into_inner().peekable();
-    
+
     let character = inner_rules.next()
         .context("Dialogue missing character identifier")?
         .as_str()
         .to_owned();
-    
+
     let emotion_statement = match inner_rules.peek() {
         Some(n) if n.as_rule() == Rule::dialogue_emotion_change => {
             let emotion_pair = inner_rules.next()
                 .context("Expected emotion pair")?;
             let emotion_name_pair = emotion_pair.into_inner().next()
                 .context("Emotion change missing emotion name")?;
-            
-            ensure!(emotion_name_pair.as_rule() == Rule::emotion_name, 
+
+            ensure!(emotion_name_pair.as_rule() == Rule::emotion_name,
                 "Expected emotion name, found {:?}", emotion_name_pair.as_rule());
-            
-            Some(Statement::Stage(StageCommand::CharacterChange { 
-                character: character.clone(), 
+
+            Some(Statement::Stage(StageCommand::CharacterChange {
+                character: character.clone(),
                 operation: CharacterOperation::EmotionChange(emotion_name_pair.as_str().to_owned())
             }))
         },
@@ -410,12 +434,12 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
     let initial_dialogue_statement = {
         let dialogue_text_pair = inner_rules.next()
             .context("Dialogue missing dialogue text")?;
-        ensure!(dialogue_text_pair.as_rule() == Rule::expr, 
+        ensure!(dialogue_text_pair.as_rule() == Rule::expr,
             "Expected dialogue text, found {:?}", dialogue_text_pair.as_rule());
-        
+
         let dialogue = build_expression(dialogue_text_pair)
             .context("Failed to build expression for dialogue text")?;
-        
+
         Statement::Dialogue(Dialogue {
             character: character.clone(),
             dialogue
@@ -450,32 +474,30 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
 
         statements
     };
-    
+
     Ok(statements)
 }
 
 pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
-    let mut act = Act {
-        scenes: HashMap::new(),
-        entrypoint: String::new(),
-    };
+    let mut act = Act::default();
+
     let mut first_scene_id: Option<String> = None;
-    
+
     for scene_pair in pair.into_inner() {
         match scene_pair.as_rule() {
             Rule::scene => {
                 let mut inner_rules = scene_pair.into_inner();
-                
+
                 let scene_id = inner_rules.next()
                     .context("Scene missing ID")?
                     .as_str()
                     .to_owned();
-                
+
                 // Set the first scene as entrypoint
                 if first_scene_id.is_none() {
                     first_scene_id = Some(scene_id.clone());
                 }
-                
+
                 let mut statements = Vec::new();
                 for statement_pair in inner_rules {
                     let stmt = match statement_pair.as_rule() {
@@ -494,14 +516,14 @@ pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
                     };
                     statements.push(stmt);
                 }
-                
-                ensure!(act.scenes.insert(scene_id.clone(), Box::new(Scene { statements })).is_none(), "Duplicate scene ID '{}'", scene_id);
+
+                ensure!(act.scenes.insert(scene_id.clone(), Box::new(Scene { name: scene_id.clone(), statements })).is_none(), "Duplicate scene ID '{}'", scene_id);
             },
             Rule::EOI => continue,
             other => bail!("Unexpected rule when parsing scenes: {:?}", other),
         }
     }
-    
+
     act.entrypoint = first_scene_id.context("No scenes found in act")?;
     Ok(act)
 }
