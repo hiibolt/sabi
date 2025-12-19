@@ -1,12 +1,16 @@
-use bevy::{color::palettes::css::{BLACK, GREEN, RED}, prelude::*};
+use bevy::{color::palettes::css::BLACK, prelude::*};
 use bevy_ui_widgets::Button;
+
 use crate::{
-    chat::{GUIScrollText, UI_Z_INDEX, controller::{InfoText, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands}, ui::FONT_PATH
+        chat::{
+            GUIScrollText, INFOTEXT_Z_INDEX_INACTIVE, UI_Z_INDEX, controller::{
+                InfoTextComponent, InfoTextContainer, MessageText, NameBoxBackground, NameText, TextBoxBackground, UiButtons, VNContainer, VnCommands
+            }, ui::FONT_PATH
     },
     compiler::controller::SabiState
 };
 
-pub(crate) fn backplate_container() -> impl Bundle {
+pub(in crate::chat) fn backplate_container() -> impl Bundle {
     (
         Node {
             width: Val::Vw(70.),
@@ -23,13 +27,13 @@ pub(crate) fn backplate_container() -> impl Bundle {
     )
 }
 
-pub(crate) fn top_section() -> impl Bundle {
+pub(in crate::chat) fn top_section() -> impl Bundle {
     // Needed for horizontal flex,
     // open to modification
     Node::default()
 }
 
-pub(crate) fn namebox() -> impl Bundle {
+pub(in crate::chat) fn namebox() -> impl Bundle {
     (
         ImageNode::default(),
         Node {
@@ -43,7 +47,7 @@ pub(crate) fn namebox() -> impl Bundle {
     )
 }
 
-pub(crate) fn nametext(asset_server: &Res<AssetServer>) -> impl Bundle {
+pub(in crate::chat) fn nametext(asset_server: &Res<AssetServer>) -> impl Bundle {
     (
         Node {
             margin: UiRect::default().with_left(px(35.)),
@@ -59,7 +63,7 @@ pub(crate) fn nametext(asset_server: &Res<AssetServer>) -> impl Bundle {
     )
 }
 
-pub(crate) fn textbox() -> impl Bundle {
+pub(in crate::chat) fn textbox() -> impl Bundle {
     (
         ImageNode::default(),
         Node {
@@ -80,7 +84,7 @@ pub(crate) fn textbox() -> impl Bundle {
     )
 }
 
-pub(crate) fn messagetext(asset_server: &Res<AssetServer>) -> impl Bundle {
+pub(in crate::chat) fn messagetext(asset_server: &Res<AssetServer>) -> impl Bundle {
     (
         Text::new("TEST"),
         GUIScrollText::default(),
@@ -94,10 +98,41 @@ pub(crate) fn messagetext(asset_server: &Res<AssetServer>) -> impl Bundle {
     )
 }
 
-pub(crate) fn infotext(asset_server: &Res<AssetServer>) -> impl Bundle {
+pub(in crate::chat) fn infotext_container(asset_server: &Res<AssetServer>) -> impl Bundle {
+    (
+        Node {
+            width: percent(100),
+            height: percent(100),
+            min_width: percent(100),
+            min_height: percent(100),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            position_type: PositionType::Absolute,
+            top: px(0),
+            left: px(0),
+            ..default()
+        },
+        ZIndex(INFOTEXT_Z_INDEX_INACTIVE),
+        Button,
+        UiButtons::InfoText,
+        InfoTextContainer,
+        DespawnOnExit(SabiState::Running),
+        children![
+            infotext(asset_server)
+        ]
+    )
+}
+
+fn infotext(asset_server: &Res<AssetServer>) -> impl Bundle {
     (
         Text::new(""),
-        Node::default(),
+        GUIScrollText::default(),
+        Node {
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            max_width: percent(70.),
+            ..default()
+        },
         TextFont {
             font: asset_server.load(FONT_PATH),
             font_size: 40.0,
@@ -107,20 +142,18 @@ pub(crate) fn infotext(asset_server: &Res<AssetServer>) -> impl Bundle {
             justify: Justify::Center,
             linebreak: LineBreak::WordBoundary,
         },
-        ZIndex(UI_Z_INDEX),
-        TextColor(Color::Srgba(RED)),
         Visibility::Hidden,
-        InfoText,
-        DespawnOnEnter(SabiState::Idle)
+        ZIndex(UI_Z_INDEX),
+        InfoTextComponent,
     )
 }
 
 pub(in crate::chat::ui) fn button(action: UiButtons) -> Result<impl Bundle, BevyError> {
     let (button_text, position_type) = match action {
-        UiButtons::TextBox     => return Err(anyhow::anyhow!("Textbox is not a valid button!").into()),
         UiButtons::OpenHistory => (String::from("History"), PositionType::Relative),
         UiButtons::ExitHistory => (String::from("Close"), PositionType::Absolute),
         UiButtons::Rewind      => (String::from("Rewind"), PositionType::Relative),
+        other                  => return Err(anyhow::anyhow!("{:?} is not a valid button!", other).into()),
     };
     
     Ok((
@@ -146,20 +179,18 @@ pub(in crate::chat::ui) fn button(action: UiButtons) -> Result<impl Bundle, Bevy
     ))
 }
 
-pub(crate) fn vn_commands() -> Result<impl Bundle, BevyError> {
+pub(in crate::chat) fn vn_commands() -> Result<impl Bundle, BevyError> {
     Ok((
         Node {
             position_type: PositionType::Absolute,
             bottom: percent(0.),
             right: percent(0.),
-            border: UiRect::all(px(3.)),
             flex_direction: FlexDirection::Row,
             margin: UiRect::default()
                 .with_bottom(percent(1.5))
                 .with_right(percent(3.)),
             ..default()
         },
-        BorderColor::all(Color::Srgba(GREEN)),
         VnCommands,
         ZIndex(UI_Z_INDEX),
         children![

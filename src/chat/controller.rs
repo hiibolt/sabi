@@ -1,8 +1,20 @@
-use crate::{VisualNovelState, chat::ui::{basic::{backplate_container, infotext, messagetext, namebox, nametext, textbox, top_section, vn_commands}, history::history_panel}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot}};
 use std::collections::HashMap;
 use anyhow::Context;
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, time::Stopwatch};
 use bevy_ui_widgets::{Activate, UiWidgetsPlugins};
+
+use crate::{
+    VisualNovelState,
+    chat::{INFOTEXT_Z_INDEX_ACTIVE, INFOTEXT_Z_INDEX_INACTIVE, ui::{
+        basic::{
+            backplate_container, infotext_container, messagetext, namebox, nametext, textbox, top_section, vn_commands
+        },
+        history::history_panel
+    }},
+    compiler::controller::{
+        Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState, UiRoot
+    }
+};
 
 const UI_ASSET_PATH: &str = "sabi/ui";
 
@@ -11,6 +23,10 @@ const UI_ASSET_PATH: &str = "sabi/ui";
 pub(crate) struct CharacterSayMessage {
     pub name: String,
     pub message: String
+}
+#[derive(Message)]
+pub(crate) struct InfoTextMessage {
+    pub text: String
 }
 #[derive(Message)]
 pub(crate) struct GUIChangeMessage {
@@ -62,7 +78,9 @@ pub(crate) struct NameText;
 #[derive(Component)]
 pub(crate) struct MessageText;
 #[derive(Component)]
-pub(crate) struct InfoText;
+pub(crate) struct InfoTextComponent;
+#[derive(Component)]
+pub(crate) struct InfoTextContainer;
 #[derive(Component)]
 pub(crate) struct VnCommands;
 #[derive(Component)]
@@ -100,6 +118,7 @@ pub(crate) enum UiButtons {
     ExitHistory,
     Rewind,
     TextBox,
+    InfoText,
 }
 
 pub(crate) struct ChatController;
@@ -111,11 +130,12 @@ impl Plugin for ChatController {
             .add_systems(OnEnter(ChatControllerState::Loading), import_gui_sprites)
             .add_systems(Update, setup.run_if(in_state(ChatControllerState::Loading)))
             .add_message::<CharacterSayMessage>()
+            .add_message::<InfoTextMessage>()
             .add_message::<GUIChangeMessage>()
             .add_plugins(UiWidgetsPlugins)
             .add_systems(Update, wait_trigger)
             .add_systems(OnEnter(ChatControllerState::Running), spawn_chatbox)
-            .add_systems(Update, (update_chatbox, update_gui).run_if(in_state(ChatControllerState::Running)))
+            .add_systems(Update, (update_chatbox, update_infotext, update_gui).run_if(in_state(ChatControllerState::Running)))
             .add_observer(button_clicked_history_state)
             .add_observer(button_clicked_default_state);
     }
@@ -147,9 +167,11 @@ fn button_clicked_history_state(
 fn button_clicked_default_state(
     trigger: On<Activate>,
     mut commands: Commands,
-    vncontainer_visibility: Single<&mut Visibility, With<VNContainer>>,
+    vncontainer_visibility: Single<&mut Visibility, (With<VNContainer>, Without<InfoTextContainer>, Without<InfoTextComponent>)>,
     scroll_stopwatch: ResMut<ChatScrollStopwatch>,
-    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>)>,
+    mut message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>, Without<InfoTextComponent>)>,
+    mut info_text: Single<(&mut GUIScrollText, &mut Text, &mut Visibility), (With<InfoTextComponent>, Without<NameText>, Without<MessageText>, Without<VNContainer>)>,
+    info_text_container_zidx: Single<&mut ZIndex, (With<InfoTextContainer>, Without<VNContainer>)>,
     mut game_state: ResMut<VisualNovelState>,
     ui_root: Single<Entity, With<UiRoot>>,
     q_buttons: Query<(Entity, &UiButtons)>,
@@ -174,29 +196,53 @@ fn button_clicked_default_state(
         },
         UiButtons::Rewind => {
             warn!("Rewind button clicked!");
+            *info_text.0 = GUIScrollText::default();
+            *message_text.0 = GUIScrollText::default();
             game_state.set_rewind();
         },
         UiButtons::TextBox => {
             warn!("Textbox history clicked");
-            textbox_clicked(vncontainer_visibility, scroll_stopwatch, message_text, game_state)?
+            textbox_clicked(vncontainer_visibility, scroll_stopwatch, message_text, game_state);
         },
+        UiButtons::InfoText => {
+            warn!("Infotext container clicked");
+            infotext_clicked(scroll_stopwatch, info_text, info_text_container_zidx, game_state);
+        }
         _ => {}
     }
 
     Ok(())
 }
-fn textbox_clicked(
-    mut vncontainer_visibility: Single<&mut Visibility, With<VNContainer>>,
+fn infotext_clicked(
     mut scroll_stopwatch: ResMut<ChatScrollStopwatch>,
-    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>)>,
+    mut info_text: Single<(&mut GUIScrollText, &mut Text, &mut Visibility), (With<InfoTextComponent>, Without<NameText>, Without<MessageText>, Without<VNContainer>)>,
+    mut container_zidx: Single<&mut ZIndex, (With<InfoTextContainer>, Without<VNContainer>)>,
     mut game_state: ResMut<VisualNovelState>,
-) -> Result<(), BevyError> {
+) {
+    let length: u32 = (scroll_stopwatch.0.elapsed_secs() * 25.) as u32;
+    if length < info_text.0.message.len() as u32 {
+        // Skip message scrolling
+        scroll_stopwatch.0.set_elapsed(std::time::Duration::from_secs_f32(100000000.));
+        return;
+    }
+    println!("[ Infotext finished ]");
 
+    // Allow transitions to be run again
+    game_state.blocking = false;
+    *info_text.2 = Visibility::Hidden;
+    **container_zidx = ZIndex(INFOTEXT_Z_INDEX_INACTIVE);
+}
+fn textbox_clicked(
+    mut vncontainer_visibility: Single<&mut Visibility, (With<VNContainer>, Without<InfoTextContainer>, Without<InfoTextComponent>)>,
+    mut scroll_stopwatch: ResMut<ChatScrollStopwatch>,
+    message_text: Single<(&mut GUIScrollText, &mut Text), (With<MessageText>, Without<NameText>, Without<InfoTextComponent>)>,
+    mut game_state: ResMut<VisualNovelState>,
+) {
     let length: u32 = (scroll_stopwatch.0.elapsed_secs() * 50.) as u32;
     if length < message_text.0.message.len() as u32 {
         // Skip message scrolling
         scroll_stopwatch.0.set_elapsed(std::time::Duration::from_secs_f32(100000000.));
-        return Ok(());
+        return;
     }
     println!("[ Player finished message ]");
 
@@ -205,7 +251,6 @@ fn textbox_clicked(
 
     // Allow transitions to be run again
     game_state.blocking = false;
-    Ok(())
 }
 fn setup(
     mut commands: Commands,
@@ -285,7 +330,8 @@ fn spawn_chatbox(
     commands.entity(textbox_bg).add_child(vn_commands);
 
     // InfoText
-    commands.spawn(infotext(&asset_server));
+    let infotext_container = commands.spawn(infotext_container(&asset_server)).id();
+    commands.entity(ui_root.entity()).add_child(infotext_container);
     
     Ok(())
 }
@@ -332,6 +378,42 @@ fn update_chatbox(
     original_string.truncate(length as usize);
     message_text.1.0 = original_string;
 
+    Ok(())
+}
+fn update_infotext(
+    mut event_message: MessageReader<InfoTextMessage>,
+    mut info_text: Single<(&mut GUIScrollText, &mut Text, &mut Visibility), With<InfoTextComponent>>,
+    mut info_text_container_zidx: Single<&mut ZIndex, With<InfoTextContainer>>,
+    mut scroll_stopwatch: ResMut<ChatScrollStopwatch>,
+    mut game_state: ResMut<VisualNovelState>,
+    time: Res<Time>,
+) -> Result<(), BevyError> {
+    // Tick clock
+    let to_tick = if time.delta_secs() > 1. { std::time::Duration::from_secs_f32(0.) } else { time.delta() };
+    scroll_stopwatch.0.tick(to_tick);
+
+    /* STANDARD SAY EVENTS INITIALIZATION [Transition::Say] */
+    for ev in event_message.read() {
+        game_state.blocking = true;
+        // Reset the scrolling timer
+        scroll_stopwatch.0.set_elapsed(std::time::Duration::from_secs_f32(0.));
+        // Update the name
+        println!("INFOTEXT {}", ev.text);
+        info_text.0.message = ev.text.clone();
+        *info_text.2 = Visibility::Visible;
+        **info_text_container_zidx = ZIndex(INFOTEXT_Z_INDEX_ACTIVE);
+    }
+
+    // Take the original string from the message object
+    let mut original_string: String = info_text.0.message.clone();
+
+    // Get the section of the string according to the elapsed time
+    let length: u32 = (scroll_stopwatch.0.elapsed_secs() * 25.) as u32;
+
+    // Return the section and apply it to the text object
+    original_string.truncate(length as usize);
+    info_text.1.0 = original_string;
+    
     Ok(())
 }
 fn wait_trigger(

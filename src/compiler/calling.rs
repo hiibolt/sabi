@@ -1,5 +1,6 @@
+use crate::chat::controller::InfoTextMessage;
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, CharacterChangeMessage, VisualNovelState};
-use crate::compiler::ast::{CodeStatement, Dialogue, Evaluate, StageCommand, Statement};
+use crate::compiler::ast::{CodeStatement, Dialogue, Evaluate, InfoText, StageCommand, Statement, TextItem};
 use bevy::prelude::*;
 use anyhow::{Context, Result};
 
@@ -14,7 +15,7 @@ pub struct ActChangeMessage {
     pub act_id: String
 }
 
-pub struct InvokeContext<'l, 'a, 'b, 'd, 'e, 'f, 'g, 'h> {
+pub struct InvokeContext<'l, 'a, 'b, 'd, 'e, 'f, 'g, 'h, 'i> {
     pub game_state: &'l mut ResMut<'a, VisualNovelState>,
     pub character_say_message: &'l mut MessageWriter<'b, CharacterSayMessage>,
     pub background_change_message: &'l mut MessageWriter<'d, BackgroundChangeMessage>,
@@ -22,6 +23,7 @@ pub struct InvokeContext<'l, 'a, 'b, 'd, 'e, 'f, 'g, 'h> {
     pub scene_change_message: &'l mut MessageWriter<'f, SceneChangeMessage>,
     pub act_change_message: &'l mut MessageWriter<'g, ActChangeMessage>,
     pub character_change_message: &'l mut MessageWriter<'h, CharacterChangeMessage>,
+    pub info_text_message: &'l mut MessageWriter<'i, InfoTextMessage>,
 }
 pub trait Invoke {
     fn invoke ( &self, ctx: InvokeContext ) -> Result<()>;
@@ -39,6 +41,28 @@ impl Invoke for Dialogue {
 
         ctx.game_state.blocking = true;
 
+        Ok(())
+    }
+}
+impl Invoke for InfoText {
+    fn invoke ( &self, ctx: InvokeContext ) -> Result<()> {
+        let text = self.infotext.evaluate_into_string()
+            .context("...while evaluating InfoText expression")?;
+        info!("Invoking InfoText");
+        
+        
+        // This is needed to prevent remaining stuck during a rewind process:
+        // if the user goes backwards to a infotext statement, it will cause
+        // the game_state to block and the vn commands to disappear, making it
+        // impossible to go backwards beyond the infotext.
+        if ctx.game_state.rewinding == 0 {
+            ctx.info_text_message.write(InfoTextMessage {
+                text,
+            });
+        
+            ctx.game_state.blocking = true;
+        }
+        
         Ok(())
     }
 }
@@ -121,8 +145,14 @@ impl Invoke for CodeStatement {
 impl Invoke for Statement {
     fn invoke( &self, ctx: InvokeContext ) -> Result<()> {
         Ok(match self {
-            Statement::Dialogue(dialogue) => dialogue.invoke(ctx)
-                .context("...while invoking Dialogue statement")?,
+            Statement::TextItem(textitem) => {
+                match textitem {
+                    TextItem::Dialogue(dialogue) => dialogue.invoke(ctx)
+                        .context("...while invoking Dialogue statement")?,
+                    TextItem::InfoText(infotext) => infotext.invoke(ctx)
+                        .context("...while invoking InfoText statement")?, 
+                }
+            }
             Statement::Stage(stage) => stage.invoke(ctx)
                 .context("...while invoking StageCommand statement")?,
             Statement::Code(code) => code.invoke(ctx)

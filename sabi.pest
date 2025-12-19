@@ -9,11 +9,11 @@ scene_name = @{ (ASCII_ALPHANUMERIC+ | "_" | "-")+ }
 // There are three types of statements
 //  1. Code statements for logic, etc
 //  2. Stage directions for changing scenes, backgrounds, sounds, etc
-//  3. Dialogue for characters to say things
+//  3. TextItem for characters to say things or for info text
 statement = _{
     code |
     stage_command |
-    dialogue
+    text_item
 }
 
 // Stage directions
@@ -35,6 +35,12 @@ code = { "{" ~ code_statement ~ "}" }
 code_statement = _{ log }
 // Writes a message to the console
 log = { "log " ~ expr+ }
+
+// Text Item
+text_item = { dialogue | infotext }
+
+// Info Text
+infotext = { narrator ~ ": " ~ expr }
 
 // Makes a character or the MC say something
 dialogue = { character_identifier ~ ": " ~ dialogue_emotion_change? ~ expr ~ (expr | stage_command)* }
@@ -58,6 +64,7 @@ character_identifier = {
 character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
+narrator = { "info" }
 gui_element = { "textbox" | "namebox" }
 image_mode = { "sliced" | "auto" }
 character_spawn_directive = {

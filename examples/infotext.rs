@@ -32,5 +32,5 @@ fn setup(
     // Create our primary camera (which is
     //  necessary even for 2D games)
     commands.spawn(Camera2d::default());
-    msg_writer.write(SabiStart(ScriptId { chapter: "examples".into(), act: "ui".into() }));
+    msg_writer.write(SabiStart(ScriptId { chapter: "examples".into(), act: "infotext".into() }));
 }

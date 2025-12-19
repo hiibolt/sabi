@@ -110,6 +110,17 @@ pub(crate) enum StageCommand {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) enum TextItem {
+    Dialogue(Dialogue),
+    InfoText(InfoText),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct InfoText {
+    pub infotext: Expr
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct Dialogue {
     pub character: String,
     pub dialogue: Expr
@@ -119,7 +130,7 @@ pub(crate) struct Dialogue {
 pub(crate) enum Statement {
     Code(CodeStatement),
     Stage(StageCommand),
-    Dialogue(Dialogue)
+    TextItem(TextItem)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -440,10 +451,10 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
         let dialogue = build_expression(dialogue_text_pair)
             .context("Failed to build expression for dialogue text")?;
 
-        Statement::Dialogue(Dialogue {
+        Statement::TextItem(TextItem::Dialogue(Dialogue  {
             character: character.clone(),
             dialogue
-        })
+        }))
     };
 
     let statements = {
@@ -458,10 +469,10 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
                     let dialogue = build_expression(dialogue_text_pair)
                         .context("Failed to build expression for dialogue text")?;
 
-                    statements.push(Statement::Dialogue(Dialogue {
+                    statements.push(Statement::TextItem(TextItem::Dialogue(Dialogue {
                         character: character.clone(),
                         dialogue
-                    }));
+                    })));
                 },
                 Rule::stage_command => {
                     let stage_stmt = build_stage_command(dialogue_text_pair)
@@ -476,6 +487,26 @@ pub fn build_dialogue(pair: Pair<Rule>) -> Result<Vec<Statement>> {
     };
 
     Ok(statements)
+}
+
+pub fn build_infotext(pair: Pair<Rule>) -> Result<Statement> {
+    let mut pairs = pair.into_inner();
+    let narrator_pair = pairs.next()
+        .context("Infotext rule missing inner elements")?;
+    
+    ensure!(narrator_pair.as_rule() == Rule::narrator,
+        "InfoText has no 'narrator' as speaker: {:?}", narrator_pair.as_rule());
+    
+    let infotext = pairs.next()
+        .context("Infotext missing text")?;
+    
+    ensure!(infotext.as_rule() == Rule::expr,
+        "Expected dialogue text, found {:?}", infotext.as_rule());
+    
+    let infotext = build_expression(infotext)
+        .context("Failed to build expression for infotext")?;
+    
+    Ok(Statement::TextItem(TextItem::InfoText(InfoText { infotext })))
 }
 
 pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
@@ -505,13 +536,22 @@ pub fn build_scenes(pair: Pair<Rule>) -> Result<Act> {
                             .context("Failed to build code statement")?,
                         Rule::stage_command => build_stage_command(statement_pair)
                             .context("Failed to build stage command")?,
-                        Rule::dialogue => {
-                            let mut inner_statements = build_dialogue(statement_pair)
-                                .context("Failed to build dialogue")?;
-                            statements.extend(inner_statements.drain(..));
-
-                            continue;
-                        },
+                        Rule::text_item => {
+                            let text_item = statement_pair.into_inner().next()
+                                .context("No text item rule found")?;
+                            match text_item.as_rule() {
+                                Rule::infotext => build_infotext(text_item)
+                                    .context("Failed to build infotext")?,
+                                Rule::dialogue => {
+                                    let mut inner_statements = build_dialogue(text_item)
+                                        .context("Failed to build dialogue")?;
+                                    statements.extend(inner_statements.drain(..));
+        
+                                    continue;
+                                },
+                                other => bail!("Invalid text item rule in scene: {:?}", other)
+                            }
+                        }
                         other => bail!("Unexpected rule in scene: {:?}", other),
                     };
                     statements.push(stmt);

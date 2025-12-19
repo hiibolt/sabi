@@ -1,4 +1,5 @@
 use crate::character::CharacterChangeMessage;
+use crate::chat::controller::InfoTextMessage;
 use crate::compiler::ast::Statement;
 use crate::compiler::calling::{Invoke, InvokeContext, SceneChangeMessage, ActChangeMessage};
 use crate::{Cursor, HistoryItem, SabiEnd, ast};
@@ -241,7 +242,7 @@ fn check_states(
     }
     Ok(())
 }
-fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
+fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h> (
     mut game_state: ResMut<'a, VisualNovelState>,
     mut character_say_message: MessageWriter<'b, CharacterSayMessage>,
     mut background_change_message: MessageWriter<'c, BackgroundChangeMessage>,
@@ -249,6 +250,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
     mut scene_change_message: MessageWriter<'e, SceneChangeMessage>,
     mut act_change_message: MessageWriter<'f, ActChangeMessage>,
     mut character_change_message: MessageWriter<'g, CharacterChangeMessage>,
+    mut info_text_message: MessageWriter<'h, InfoTextMessage>,
 
     mut state: ResMut<NextState<SabiState>>,
     mut ev_controller_writer: MessageWriter<ControllersSetStateMessage>,
@@ -263,7 +265,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
         info!("rewinding {}", game_state.rewinding);
         game_state.rewinding -= 1;
         let next_statement = match game_state.statements.prev() {
-            Some(Statement::Dialogue(d)) => Some(Statement::Dialogue(d)),
+            Some(Statement::TextItem(item)) => Some(Statement::TextItem(item)),
             Some(Statement::Stage(_)) => {
                 game_state.statements.find_previous()
             },
@@ -292,6 +294,7 @@ fn run<'a, 'b, 'c, 'd, 'e, 'f, 'g> (
                 scene_change_message: &mut scene_change_message,
                 act_change_message: &mut act_change_message,
                 character_change_message: &mut character_change_message,
+                info_text_message: &mut info_text_message,
             })
             .context("Failed to invoke statement")?;
     } else {
