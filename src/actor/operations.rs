@@ -1,7 +1,22 @@
 use std::ops::Index;
 use anyhow::Context;
 use bevy::prelude::*;
-use crate::{VisualNovelState, actor::{CharacterConfig, controller::{ActorConfig, ActorPosition, CharactersResource, FadingActors, MovingActors, SpriteKey}}, compiler::controller::SabiState};
+use crate::{
+    VisualNovelState,
+    actor::{
+        CharacterConfig,
+        controller::{
+            ActorConfig,
+            ActorPosition,
+            ActorsResource,
+            FadingActors,
+            MovingActors,
+            SpriteIdentifier,
+            SpriteKey
+        }
+    },
+    compiler::controller::SabiState
+};
 use crate::compiler::controller::UiRoot;
 
 const MOVEMENT_STEP: f32 = 0.4;
@@ -12,7 +27,7 @@ pub struct Character;
 
 pub fn change_character_emotion(
     image: &mut ImageNode,
-    sprites: &Res<CharactersResource>,
+    sprites: &Res<ActorsResource>,
     emotion: &str,
     config: &CharacterConfig
 ) -> Result<(), BevyError> {
@@ -21,7 +36,7 @@ pub fn change_character_emotion(
        outfit: config.outfit.clone(),
        emotion: emotion.to_owned()
    };
-   let sprite = sprites.0.get(&sprite_key).context(format!("Sprite not found for {:?}", sprite_key))?;
+   let sprite = sprites.0.get(&SpriteIdentifier::Character(sprite_key.clone())).context(format!("Sprite not found for {:?}", sprite_key))?;
    image.image = sprite.clone();
    
    Ok(())
@@ -108,7 +123,7 @@ pub fn apply_alpha(
 pub fn spawn_actor(
     commands: &mut Commands,
     actor_config: ActorConfig,
-    sprites: &Res<CharactersResource>,
+    sprites: &Res<ActorsResource>,
     fading: bool,
     fading_actors: &mut ResMut<FadingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
@@ -122,7 +137,7 @@ pub fn spawn_actor(
                 outfit: actor_config.outfit.clone(),
                 emotion: actor_config.emotion.clone(),
             };
-            let image = sprites.0.get(&sprite_key).context(format!("No sprite found for {:?}", sprite_key))?;
+            let image = sprites.0.get(&SpriteIdentifier::Character(sprite_key.clone())).context(format!("No sprite found for {:?}", sprite_key))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
             let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
             commands.spawn(
@@ -150,8 +165,8 @@ pub fn spawn_actor(
             ).id()
         },
         ActorConfig::Animation(actor_config) => {
-            let sprite_key = actor_config.name;
-            let image = sprites.0.get(&sprite_key).context(format!("No sprite found for {:?}", sprite_key))?;
+            let anim_id = actor_config.name.clone();
+            let image = sprites.0.get(&SpriteIdentifier::Animation(anim_id.clone())).context(format!("No sprite found for {:?}", anim_id))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
             let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
             commands.spawn(

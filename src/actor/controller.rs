@@ -1,10 +1,10 @@
 use std::{any::TypeId, collections::HashMap, path::PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
 use serde::Deserialize;
 
-use crate::{VisualNovelState, actor::character_operations::{apply_alpha, change_character_emotion, move_characters, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
+use crate::{VisualNovelState, actor::operations::{apply_alpha, change_character_emotion, move_characters, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
 use crate::compiler::controller::UiRoot;
 
 pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
@@ -60,7 +60,7 @@ pub(crate) struct AnimationConfig {
     pub disabled: bool,
 }
 #[derive(Component, Debug, Asset, TypePath, Deserialize, Clone)]
-pub(crate) enum ActorConfig {
+pub enum ActorConfig {
     Character(CharacterConfig),
     Animation(AnimationConfig),
 }
@@ -139,37 +139,39 @@ impl TryFrom<&str> for CharacterPosition {
 struct HandleToCharactersFolder(Handle<LoadedFolder>);
 #[derive(Resource)]
 struct HandleToAnimationsFolder(Handle<LoadedFolder>);
-#[derive(Resource)]
-pub(crate) struct CharactersResource(pub CharacterSprites);
-#[derive(Resource)]
-pub(crate) struct AnimationsResource(pub AnimationSprites);
-// #[derive(Resource)]
-// pub(crate) struct ActorsResource(pub ActorSprites);
+
+#[derive(Resource, Default)]
+pub(crate) struct ActorsResource(pub ActorSprites);
+
 #[derive(Resource, Default, Debug)]
 struct ActorsConfigs(ActorsConfig);
+
 #[derive(Resource, Default)]
 struct CharFolderLoaded(pub bool);
 #[derive(Resource, Default)]
 struct AnimFolderLoaded(pub bool);
+
 #[derive(Resource, Default)]
 pub(crate) struct FadingActors(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
 #[derive(Resource, Default)]
 pub(crate) struct MovingActors(pub Vec<(Entity, f32)>); // entity, target_position
 
 /* Custom types */
-pub(crate) enum ActorSprites {
-    Character(CharacterSprites),
-    Animation(AnimationSprites),
-}
 #[derive(Hash, Eq, PartialEq, Debug)]
+pub(crate) enum SpriteIdentifier {
+    Character(SpriteKey),
+    Animation(String),
+}
+pub(crate) type ActorSprites = HashMap<SpriteIdentifier, Handle<Image>>;
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub(crate) struct SpriteKey {
     pub character: String,
     pub outfit: String,
     pub emotion: String,
 }
-type ActorsConfig = HashMap<String, ActorConfig>;
 type CharacterSprites = HashMap<SpriteKey, Handle<Image>>;
 type AnimationSprites = HashMap<String, Handle<Image>>;
+type ActorsConfig = HashMap<String, ActorConfig>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CharacterDirection {
@@ -224,10 +226,11 @@ impl Plugin for CharacterController {
             .insert_resource(CharFolderLoaded::default())
             .insert_resource(AnimFolderLoaded::default())
             .insert_resource(ActorsConfigs::default())
+            .insert_resource(ActorsResource::default())
             .add_message::<ActorChangeMessage>()
             .init_state::<CharacterControllerState>()
             .add_systems(Update, wait_trigger)
-            .add_systems(OnEnter(CharacterControllerState::Loading), import_characters)
+            .add_systems(OnEnter(CharacterControllerState::Loading), import_assets)
             .add_systems(Update, setup.run_if(in_state(CharacterControllerState::Loading)))
             .add_systems(Update, (update_actors, apply_alpha, move_characters)
                 .run_if(in_state(CharacterControllerState::Running)))
@@ -246,6 +249,7 @@ fn define_characters_map(
     actor_config_assets: &Res<Assets<ActorConfig>>,
     loaded_folder: &LoadedFolder,
     actual_configs: &ResMut<ActorsConfigs>,
+    sprite_resource: &mut ResMut<ActorsResource>,
 ) -> Result<(), BevyError> {
     
     let mut characters_sprites = CharacterSprites::new();
@@ -290,7 +294,9 @@ fn define_characters_map(
             );
         }
     }
-    commands.insert_resource(CharactersResource(characters_sprites));
+    for spr in characters_sprites {
+        sprite_resource.0.insert(SpriteIdentifier::Character(spr.0), spr.1);
+    }
     commands.insert_resource(ActorsConfigs(actual_configs.0.clone().into_iter().chain(characters_configs).collect()));
     Ok(())
 }
@@ -299,6 +305,7 @@ fn define_animations_map(
     config_res: &Res<Assets<ActorConfig>>,
     loaded_folder: &LoadedFolder,
     actual_configs: &ResMut<ActorsConfigs>,
+    sprite_resource: &mut ResMut<ActorsResource>,
 ) -> Result<(), BevyError> {
     
     let mut animations_configs = ActorsConfig::new();
@@ -319,7 +326,9 @@ fn define_animations_map(
     }
     info!("Adding animation resources: {:?}", animations_sprites);
     info!("Adding animation resources: {:?}", animations_configs);
-    commands.insert_resource(AnimationsResource(animations_sprites));
+    for anim in animations_sprites {
+        sprite_resource.0.insert(SpriteIdentifier::Animation(anim.0), anim.1);
+    }
     commands.insert_resource(ActorsConfigs(actual_configs.0.clone().into_iter().chain(animations_configs).collect()));
     
     Ok(())
@@ -332,6 +341,7 @@ fn setup(
     folder_anim_handle: Res<HandleToAnimationsFolder>,
     actor_config_asset: Res<Assets<ActorConfig>>,
     actual_configs: ResMut<ActorsConfigs>,
+    mut sprite_resource: ResMut<ActorsResource>,
     mut char_folder_loaded: ResMut<CharFolderLoaded>,
     mut anim_folder_loaded: ResMut<AnimFolderLoaded>,
     mut controller_state: ResMut<NextState<CharacterControllerState>>,
@@ -344,7 +354,7 @@ fn setup(
             match state {
                 LoadState::Loaded => {
                     if let Some(loaded_folder) = loaded_folders.get(folder_char_handle.0.id()) {
-                        define_characters_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs)?;
+                        define_characters_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs, &mut sprite_resource)?;
                         char_folder_loaded.0 = true;
                     } else {
                         return Err(anyhow::anyhow!("Error loading character assets").into());
@@ -364,7 +374,7 @@ fn setup(
             match state {
                 LoadState::Loaded => {
                     if let Some(loaded_folder) = loaded_folders.get(folder_anim_handle.0.id()) {
-                        define_animations_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs)?;
+                        define_animations_map(&mut commands, &actor_config_asset, loaded_folder, &actual_configs, &mut sprite_resource)?;
                         anim_folder_loaded.0 = true;
                     } else {
                         return Err(anyhow::anyhow!("Error loading animation assets").into());
@@ -386,7 +396,7 @@ fn setup(
     
     Ok(())
 }
-fn import_characters(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn import_assets(mut commands: Commands, asset_server: Res<AssetServer>) {
     let loaded_char_folder = asset_server.load_folder(CHARACTERS_ASSET_PATH);
     let loaded_anim_folder = asset_server.load_folder(ANIMATIONS_ASSET_PATH);
     commands.insert_resource(HandleToCharactersFolder(loaded_char_folder));
@@ -403,13 +413,13 @@ fn wait_trigger(
 fn exec_char_operation(
     character_config: &mut CharacterConfig,
     operation: &ActorOperation,
-    mut character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
-    mut moving_actors: &mut ResMut<MovingActors>,
+    moving_actors: &mut ResMut<MovingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
-    mut game_state: &mut ResMut<VisualNovelState>,
-    actor_sprites: &Res<CharactersResource>,
+    game_state: &mut ResMut<VisualNovelState>,
+    actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
 ) -> Result<(), BevyError> {
     match operation {
@@ -468,13 +478,13 @@ fn exec_char_operation(
 fn exec_anim_operation(
     anim_config: &mut AnimationConfig,
     operation: &ActorOperation,
-    mut character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
-    mut moving_actors: &mut ResMut<MovingActors>,
+    moving_actors: &mut ResMut<MovingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
-    mut game_state: &mut ResMut<VisualNovelState>,
-    char_sprites: &Res<CharactersResource>,
+    game_state: &mut ResMut<VisualNovelState>,
+    actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
 ) -> Result<(), BevyError> {
     match operation {
@@ -482,7 +492,7 @@ fn exec_anim_operation(
             if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == anim_config.name) {
                 warn!("Another instance of the animation is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &char_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
+            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
             if info.fading {
                 game_state.blocking = true;
             }
@@ -519,7 +529,7 @@ fn update_actors(
     mut commands: Commands,
     mut character_query: Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
     ui_root: Single<Entity, With<UiRoot>>,
-    char_sprites: Res<CharactersResource>,
+    actor_sprites: Res<ActorsResource>,
     mut actor_configs: ResMut<ActorsConfigs>,
     mut fading_actors: ResMut<FadingActors>,
     mut moving_actors: ResMut<MovingActors>,
@@ -532,8 +542,8 @@ fn update_actors(
         info!("configs: {actor_configs:#?} name: {:#?}", msg.name);
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
         match actor_config {
-            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &char_sprites, &images)?,
-            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &char_sprites, &images)?,
+            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images)?,
+            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images)?,
         }
     }
 

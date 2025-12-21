@@ -1,4 +1,4 @@
-mod character_operations;
+mod operations;
 pub(crate) mod controller;
 
 pub(crate) use controller::ActorChangeMessage;
