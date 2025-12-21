@@ -1,4 +1,4 @@
-use std::ops::Index;
+use std::{ops::Index, time::Duration};
 use anyhow::Context;
 use bevy::prelude::*;
 use crate::{
@@ -6,13 +6,7 @@ use crate::{
     actor::{
         CharacterConfig,
         controller::{
-            ActorConfig,
-            ActorPosition,
-            ActorsResource,
-            FadingActors,
-            MovingActors,
-            SpriteIdentifier,
-            SpriteKey
+            ActorConfig, ActorPosition, ActorsResource, AnimationPosition, AnimationTimer, CharacterPosition, FadingActors, MovingActors, SpawnInfo, SpriteIdentifier, SpriteKey
         }
     },
     compiler::controller::SabiState
@@ -124,11 +118,11 @@ pub fn spawn_actor(
     commands: &mut Commands,
     actor_config: ActorConfig,
     sprites: &Res<ActorsResource>,
-    fading: bool,
     fading_actors: &mut ResMut<FadingActors>,
     ui_root: &Single<Entity, With<UiRoot>>,
     images: &Res<Assets<Image>>,
-    position: ActorPosition,
+    info: SpawnInfo,
+    texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
 ) -> Result<(), BevyError> {
     let actor_entity = match actor_config {
         ActorConfig::Character(actor_config) => {
@@ -140,11 +134,17 @@ pub fn spawn_actor(
             let image = sprites.0.get(&SpriteIdentifier::Character(sprite_key.clone())).context(format!("No sprite found for {:?}", sprite_key))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
             let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+            let position = if let Some(pos) = info.position {
+                match pos {
+                    ActorPosition::Character(a) => a,
+                    _ => { return Err(anyhow::anyhow!(format!("Expected Character position, found {:?}", pos)).into()); }
+                }
+            } else { CharacterPosition::default() };
             commands.spawn(
                 (
                     ImageNode {
                         image: image.clone(),
-                        color: Color::default().with_alpha(if fading {
+                        color: Color::default().with_alpha(if info.fading {
                             0.
                         } else { 1. }),
                         ..default()
@@ -154,7 +154,7 @@ pub fn spawn_actor(
                         max_height: percent(75.),
                         bottom: percent(0.),
                         aspect_ratio: Some(aspect_ratio),
-                        // left: percent(position.to_percentage_value()),
+                        left: percent(position.to_percentage_value()),
                         ..default()
                     },
                     ZIndex(CHARACTERS_Z_INDEX),
@@ -169,25 +169,45 @@ pub fn spawn_actor(
             let image = sprites.0.get(&SpriteIdentifier::Animation(anim_id.clone())).context(format!("No sprite found for {:?}", anim_id))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
             let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+            let layout = TextureAtlasLayout::from_grid(UVec2 {
+                x: actor_config.width as u32,
+                y: actor_config.height as u32
+            }, actor_config.columns as u32, actor_config.rows as u32, None, None);
+            let atlas_handle = texture_atlas_layouts.add(layout);
+            let position = if let Some(pos) = info.position {
+                match pos {
+                    ActorPosition::Animation(a) => a,
+                    _ => { return Err(anyhow::anyhow!(format!("Expected Animation position, found {:?}", pos)).into()); }
+                }
+            } else { AnimationPosition::default() };
+            
+            let (left, bottom) = match position {
+                AnimationPosition::Center => { (50., 50.) },
+                _ => { (0., 0.) }
+            };
             commands.spawn(
                 (
                     ImageNode {
                         image: image.clone(),
-                        color: Color::default().with_alpha(if fading {
+                        texture_atlas: Some(TextureAtlas {
+                            layout: atlas_handle,
+                            index: actor_config.start_index,
+                        }),
+                        color: Color::default().with_alpha(if info.fading {
                             0.
                         } else { 1. }),
                         ..default()
                     },
                     Node {
                         position_type: PositionType::Absolute,
-                        max_height: percent(75.),
-                        bottom: percent(0.),
                         aspect_ratio: Some(aspect_ratio),
-                        // left: percent(position.to_percentage_value()),
+                        left: percent(left),
+                        bottom: percent(bottom),
                         ..default()
                     },
                     ZIndex(CHARACTERS_Z_INDEX),
                     Character,
+                    AnimationTimer(Timer::new(Duration::from_secs_f32(1. / (actor_config.fps as f32)), TimerMode::Repeating)),
                     actor_config,
                     DespawnOnExit(SabiState::Running)
                 )
@@ -195,7 +215,7 @@ pub fn spawn_actor(
         }
     };
     commands.entity(ui_root.entity()).add_child(actor_entity);
-    if fading {
+    if info.fading {
         fading_actors.0.push((actor_entity, 0.01, false));
     }
     Ok(())

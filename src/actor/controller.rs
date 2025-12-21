@@ -57,7 +57,6 @@ pub(crate) struct AnimationConfig {
     pub start_index: usize,
     pub end_index: usize,
     pub once: bool,
-    pub disabled: bool,
 }
 #[derive(Component, Debug, Asset, TypePath, Deserialize, Clone)]
 pub enum ActorConfig {
@@ -69,12 +68,6 @@ pub enum ActorConfig {
 pub(crate) enum ActorPosition {
     Character(CharacterPosition),
     Animation(AnimationPosition),
-}
-
-impl Default for ActorPosition {
-    fn default() -> Self {
-        Self::Character(CharacterPosition::default())
-    }
 }
 
 #[derive(Component, Default, Debug, Clone, PartialEq)]
@@ -134,6 +127,9 @@ impl TryFrom<&str> for CharacterPosition {
     }
 }
 
+#[derive(Component)]
+pub(crate) struct AnimationTimer(pub Timer);
+
 /* Resources */
 #[derive(Resource)]
 struct HandleToCharactersFolder(Handle<LoadedFolder>);
@@ -182,7 +178,7 @@ pub enum CharacterDirection {
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpawnInfo {
     pub emotion: Option<String>,
-    pub position: ActorPosition,
+    pub position: Option<ActorPosition>,
     pub fading: bool,
 }
 
@@ -421,6 +417,7 @@ fn exec_char_operation(
     game_state: &mut ResMut<VisualNovelState>,
     actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlasLayout>>,
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
@@ -429,7 +426,7 @@ fn exec_char_operation(
             if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
                 warn!("Another instance of the character is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
+            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases)?;
             if info.fading {
                 game_state.blocking = true;
             }
@@ -486,13 +483,14 @@ fn exec_anim_operation(
     game_state: &mut ResMut<VisualNovelState>,
     actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
+    texture_atlases: &mut ResMut<Assets<TextureAtlasLayout>>,
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
             if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == anim_config.name) {
                 warn!("Another instance of the animation is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, info.fading, &mut fading_actors, &ui_root, &images, info.position.clone())?;
+            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases)?;
             if info.fading {
                 game_state.blocking = true;
             }
@@ -536,14 +534,28 @@ fn update_actors(
     mut actor_change_message: MessageReader<ActorChangeMessage>,
     mut game_state: ResMut<VisualNovelState>,
     images: Res<Assets<Image>>,
+    mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
+    anim_timers: Query<(&mut ImageNode, &AnimationConfig, &mut AnimationTimer), Without<CharacterConfig>>,
+    time: Res<Time>,
 ) -> Result<(), BevyError> {
     
     for msg in actor_change_message.read() {
-        info!("configs: {actor_configs:#?} name: {:#?}", msg.name);
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
         match actor_config {
-            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images)?,
-            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images)?,
+            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases)?,
+            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases)?,
+        }
+    }
+    
+    for (mut image, config, mut timer) in anim_timers {
+        timer.0.tick(time.delta());
+        if timer.0.just_finished() {
+            if let Some(atlas) = &mut image.texture_atlas {
+                let next_index = atlas.index + 1;
+                atlas.index = if next_index > config.end_index {
+                    config.start_index
+                } else { next_index };
+            }
         }
     }
 

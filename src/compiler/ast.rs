@@ -205,7 +205,7 @@ fn build_character_spawn_directive(character: &str, action: &str, mut inner_acti
                             Ok(pos) => pos,
                             Err(e) => bail!(e)
                         };
-                        info.position = ActorPosition::Character(position);
+                        info.position = Some(ActorPosition::Character(position));
                     }
                     _ => {added_action = None;}
                 };
