@@ -50,11 +50,18 @@ impl Invoke for InfoText {
             .context("...while evaluating InfoText expression")?;
         info!("Invoking InfoText");
         
-        ctx.info_text_message.write(InfoTextMessage {
-            text,
-        });
         
-        ctx.game_state.blocking = true;
+        // This is needed to prevent remaining stuck during a rewind process:
+        // if the user goes backwards to a infotext statement, it will cause
+        // the game_state to block and the vn commands to disappear, making it
+        // impossible to go backwards beyond the infotext.
+        if ctx.game_state.rewinding == 0 {
+            ctx.info_text_message.write(InfoTextMessage {
+                text,
+            });
+        
+            ctx.game_state.blocking = true;
+        }
         
         Ok(())
     }
