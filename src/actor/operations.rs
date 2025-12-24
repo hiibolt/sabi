@@ -169,7 +169,9 @@ pub fn spawn_actor(
             let anim_id = actor_config.name.clone();
             let image = sprites.0.get(&SpriteIdentifier::Animation(anim_id.clone())).context(format!("No sprite found for {:?}", anim_id))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
-            let aspect_ratio = image_asset.texture_descriptor.size.width as f32 / image_asset.texture_descriptor.size.height as f32;
+            let (image_width, image_height) = (image_asset.texture_descriptor.size.width as f32, image_asset.texture_descriptor.size.height as f32);
+            info!("size: {:?}, {:?}", image_width, image_height);
+            let aspect_ratio = image_width / image_height;
             let layout = TextureAtlasLayout::from_grid(UVec2 {
                 x: actor_config.width as u32,
                 y: actor_config.height as u32
@@ -182,7 +184,6 @@ pub fn spawn_actor(
                 }
             } else { AnimationPosition::default() };
             
-            info!("Position is {:?}", position);
             let (left, bottom) = match position {
                 AnimationPosition::TopLeft     => { (15., 85.) },
                 AnimationPosition::Top         => { (50., 85.) },
@@ -194,6 +195,9 @@ pub fn spawn_actor(
                 AnimationPosition::Bottom      => { (50., 15.) },
                 AnimationPosition::BottomRight => { (85., 15.) },
             };
+            
+            let scale = info.scale.unwrap_or(1.);
+            
             commands.spawn(
                 (
                     ImageNode {
@@ -211,6 +215,8 @@ pub fn spawn_actor(
                     Node {
                         position_type: PositionType::Absolute,
                         aspect_ratio: Some(aspect_ratio),
+                        width: px(actor_config.width as f32 * scale),
+                        height: px(actor_config.height as f32 * scale),
                         left: percent(left),
                         bottom: percent(bottom),
                         ..default()
