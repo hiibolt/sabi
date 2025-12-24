@@ -184,18 +184,7 @@ pub fn spawn_actor(
                 }
             } else { AnimationPosition::default() };
             
-            let (left, bottom) = match position {
-                AnimationPosition::TopLeft     => { (15., 85.) },
-                AnimationPosition::Top         => { (50., 85.) },
-                AnimationPosition::TopRight    => { (85., 85.) },
-                AnimationPosition::Left        => { (15., 50.) },
-                AnimationPosition::Center      => { (50., 50.) },
-                AnimationPosition::Right       => { (85., 50.) },
-                AnimationPosition::BottomLeft  => { (15., 15.) },
-                AnimationPosition::Bottom      => { (50., 15.) },
-                AnimationPosition::BottomRight => { (85., 15.) },
-            };
-            
+            let (left, bottom): (f32, f32) = position.into();
             let scale = info.scale.unwrap_or(1.);
             
             commands.spawn(
