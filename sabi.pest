@@ -30,7 +30,7 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
-    animation_change = { "Animated" ~ expr ~ character_spawn_directive ~ animation_position? ~ (character_direction_directive ~ character_direction)? }
+    animation_change = { "Animated" ~ expr ~ actor_spawn_directive ~ animation_position? ~ actor_direction_directive? ~ animation_scale? }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
@@ -69,14 +69,15 @@ mc_identifier = { "MC" }
 narrator = { "info" }
 gui_element = { "textbox" | "namebox" }
 image_mode = { "sliced" | "auto" }
-character_spawn_directive = {
-                                "appears" |
-                                "disappears" |
-                                "fade in" |
-                                "fade out"
-                            }
-character_direction_directive = { "looking" | "looks" }
-character_direction = { "left" | "right" }
+actor_spawn_directive = {
+                            "appears" |
+                            "disappears" |
+                            "fade in" |
+                            "fade out"
+                        }
+actor_direction_directive = { actor_direction_command ~ actor_direction }
+actor_direction_command = { "looking" | "looks" }
+actor_direction = { "left" | "right" }
 character_movement_directive = { "moves" }
 character_position = { 
                         "center" |
@@ -98,11 +99,14 @@ animation_position = {
                          "bottom" |
                          "bottom right"
                      }
-character_action =  {
-                        (character_spawn_directive ~ character_position? ~ emotion_name?) |
-                        (character_direction_directive ~ character_direction) |
-                        (character_movement_directive ~ character_position)
-                    }
+character_action =   {
+                         (actor_spawn_directive ~ character_position? ~ actor_direction_directive? ~ emotion_name?) |
+                         (actor_direction_directive) |
+                         (character_movement_directive ~ character_position)
+                     }
+animation_scale =    {
+                         ("scale" ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)?)
+                     }
                    
 // Background definitions
 background_directive = { "Background" ~ background_action }

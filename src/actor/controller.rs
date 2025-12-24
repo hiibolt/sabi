@@ -169,9 +169,10 @@ type CharacterSprites = HashMap<SpriteKey, Handle<Image>>;
 type AnimationSprites = HashMap<String, Handle<Image>>;
 type ActorsConfig = HashMap<String, ActorConfig>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum CharacterDirection {
     Left,
+    #[default]
     Right
 }
 
@@ -179,7 +180,9 @@ pub enum CharacterDirection {
 pub struct SpawnInfo {
     pub emotion: Option<String>,
     pub position: Option<ActorPosition>,
+    pub direction: CharacterDirection,
     pub fading: bool,
+    pub scale: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
