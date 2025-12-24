@@ -105,7 +105,7 @@ character_action =   {
                          (character_movement_directive ~ character_position)
                      }
 animation_scale =    {
-                         ("scale" ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)?)
+                         ("scale" ~ number)
                      }
                    
 // Background definitions
@@ -130,5 +130,5 @@ background_direction    = {
                           }
 
 // Intrinsic types
-number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+number    = @{ "-"? ~ ASCII_DIGIT+ ~ "."* ~ ASCII_DIGIT* }
 string    = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }

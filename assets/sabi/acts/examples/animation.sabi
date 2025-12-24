@@ -3,6 +3,6 @@ SCENE animation_example
     (GUI textbox changes to "nine_slice" sliced)
     (Nayu appears looking left)
     Nayu: "Don't you think that sometimes everything seems to be a little static?"
-    (Animated "fire" appears scale 3)
+    (Animated "fire" appears bottom left scale 3)
     Nayu: (concerned) "Dear God! What are you?!"
 CURTAIN

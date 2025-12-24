@@ -1,4 +1,3 @@
-use std::iter::Peekable;
 use pest::{iterators::Pair, pratt_parser::PrattParser};
 use pest_derive::Parser;
 use anyhow::{bail, ensure, Context, Result};
@@ -6,7 +5,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::{
-    actor::{ActorOperation, controller::{ActorPosition, CharacterDirection, CharacterPosition, SpawnInfo}}, background::controller::{BackgroundDirection, BackgroundOperation}, chat::controller::{GuiChangeTarget, GuiImageMode}
+    actor::{ActorOperation, controller::{ActorPosition, AnimationPosition, CharacterDirection, CharacterPosition, SpawnInfo}}, background::controller::{BackgroundDirection, BackgroundOperation}, chat::controller::{GuiChangeTarget, GuiImageMode}
 };
 
 #[derive(Parser)]
@@ -392,17 +391,29 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
             
             while let Some(directive) = inner_rules.next() {
                 match directive.as_rule() {
-                    Rule::animation_position => { info!("animation position!"); },
-                    Rule::actor_direction_directive => { info!("actor direction directive!"); },
-                    Rule::animation_scale => {
-                        info!("animation scale!");
+                    Rule::animation_position => {
+                        let position = AnimationPosition::try_from(directive.as_str())?;
+                        spawn_info.position = Some(ActorPosition::Animation(position));
                     },
-                    _ => info!("unexpected!")
+                    Rule::actor_direction_directive => {
+                        let mut pair_iter = directive.into_inner();
+                        let _ = pair_iter.next().context("Missing direction command")?;
+                        let direction = pair_iter.next().context("Missing direction")?;
+                        spawn_info.direction = CharacterDirection::try_from(direction.as_str())?;
+                    },
+                    Rule::animation_scale => {
+                        let mut pair_iter = directive.into_inner();
+                        // let _ = pair_iter.next().context("Missing scale command")?;
+                        let scale = pair_iter.next().context("Missing scale value")?;
+                        info!("DIRECTIVE {:?}", scale.as_str());
+                        let number: f32 = if scale.as_str().contains(".") { scale.as_str().parse()? } else { scale.as_str().parse::<i32>()? as f32 };
+                        spawn_info.scale = Some(number);
+                    },
+                    other => info!("Unexpected rule in animation definition! {:?}", other)
                 }
             }
             
             StageCommand::AnimationChange { animation, operation: ActorOperation::Spawn(spawn_info) }
-            
         }
         other => bail!("Unexpected rule in stage command: {:?}", other)
     };

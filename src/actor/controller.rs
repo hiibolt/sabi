@@ -96,6 +96,28 @@ pub(crate) enum AnimationPosition {
     BottomRight,
 }
 
+impl TryFrom<&str> for AnimationPosition {
+    type Error = std::io::Error;
+    
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "top left" => Ok(AnimationPosition::TopLeft),
+            "top" => Ok(AnimationPosition::Top),
+            "top right" => Ok(AnimationPosition::TopRight),
+            "left" => Ok(AnimationPosition::Left),
+            "center" => Ok(AnimationPosition::Center),
+            "right" => Ok(AnimationPosition::Right),
+            "bottom left" => Ok(AnimationPosition::BottomLeft),
+            "bottom" => Ok(AnimationPosition::Bottom),
+            "bottom right" => Ok(AnimationPosition::BottomRight),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Unexpected position: {:?}", other),
+            ))
+        }
+    }
+}
+
 impl CharacterPosition {
     pub fn to_percentage_value(&self) -> f32 {
         match &self {
@@ -174,6 +196,21 @@ pub enum CharacterDirection {
     Left,
     #[default]
     Right
+}
+
+impl TryFrom<&str> for CharacterDirection {
+    type Error = std::io::Error;
+    
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "left" => Ok(CharacterDirection::Left),
+            "right" => Ok(CharacterDirection::Right),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Unexpected direction: {:?}", other),
+            ))
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
