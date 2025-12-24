@@ -362,10 +362,8 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                 .to_owned();
             let action = inner_rules.next()
                 .context("Character change missing character action")?;
-            info!("ACTION: {:?}", action);
             let mut action_iter = action.into_inner();
             let action = action_iter.next().context("Could not get inner action")?;
-            info!("ACTION2: {:?}", action);
             match action.as_rule() {
                 Rule::actor_spawn_directive         => { build_actor_spawn_directive(&character, action.as_str(), action_iter)? }
                 Rule::actor_direction_directive     => { build_character_direction_directive(&character, action)? },

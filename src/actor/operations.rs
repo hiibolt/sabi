@@ -170,7 +170,6 @@ pub fn spawn_actor(
             let image = sprites.0.get(&SpriteIdentifier::Animation(anim_id.clone())).context(format!("No sprite found for {:?}", anim_id))?;
             let image_asset = images.get(image).context(format!("Asset not found for {:?}", image))?;
             let (image_width, image_height) = (image_asset.texture_descriptor.size.width as f32, image_asset.texture_descriptor.size.height as f32);
-            info!("size: {:?}, {:?}", image_width, image_height);
             let aspect_ratio = image_width / image_height;
             let layout = TextureAtlasLayout::from_grid(UVec2 {
                 x: actor_config.width as u32,
