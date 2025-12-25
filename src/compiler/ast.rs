@@ -177,8 +177,6 @@ pub(crate) fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr
 }
 
 fn build_actor_spawn_directive(character: &str, action: &str, mut action_iter: pest::iterators::Pairs<'_, Rule>) -> Result<StageCommand> {
-    info!("build_actor_spawn_directive {:?}", action_iter);
-    
     let operation = match action {
         "appears" | "fade in" => {
             let mut info = SpawnInfo {
@@ -401,9 +399,7 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
                     },
                     Rule::animation_scale => {
                         let mut pair_iter = directive.into_inner();
-                        // let _ = pair_iter.next().context("Missing scale command")?;
                         let scale = pair_iter.next().context("Missing scale value")?;
-                        info!("DIRECTIVE {:?}", scale.as_str());
                         let number: f32 = if scale.as_str().contains(".") { scale.as_str().parse()? } else { scale.as_str().parse::<i32>()? as f32 };
                         spawn_info.scale = Some(number);
                     },

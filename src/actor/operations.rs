@@ -25,7 +25,6 @@ fn position_relative_to_center(
     scale: f32,
     window: &Window,
 ) -> (f32, f32) {
-    info!("left bottom before {}, {}", left, bottom);
     let (w_pct, h_pct) = (image_w as f32 * scale / window.resolution.width() * 100., image_h as f32 * scale / window.resolution.height() * 100.);
     (
         left - w_pct / 2.,
@@ -205,7 +204,6 @@ pub fn spawn_actor(
                 scale,
                 window,
             );
-            info!("left bottom after {}, {}", left, bottom);
             
             commands.spawn(
                 (
