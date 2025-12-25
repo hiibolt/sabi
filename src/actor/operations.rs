@@ -17,7 +17,7 @@ const MOVEMENT_STEP: f32 = 0.4;
 const CHARACTERS_Z_INDEX: i32 = 3;
 
 #[derive(Component)]
-pub struct Character;
+pub struct Actor;
 
 fn position_relative_to_center(
     (left, bottom): (f32, f32),
@@ -48,7 +48,7 @@ pub fn change_character_emotion(
    Ok(())
 }
 pub fn move_characters(
-    query: Query<(Entity, &mut Node), With<Character>>,
+    query: Query<(Entity, &mut Node), With<Actor>>,
     mut moving_characters: ResMut<MovingActors>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
@@ -86,43 +86,43 @@ pub fn move_characters(
 }
 pub fn apply_alpha(
     mut commands: Commands,
-    mut query: Query<&mut ImageNode, With<Character>>,
-    mut fading_characters: ResMut<FadingActors>,
+    mut query: Query<&mut ImageNode, With<Actor>>,
+    mut fading_actors: ResMut<FadingActors>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
-    if fading_characters.0.is_empty() {
+    if fading_actors.0.is_empty() {
         return;
     }
 
     let mut finished_anim: Vec<Entity> = Vec::new();
-    for fading_char in &fading_characters.0 {
-        let mut s = match query.get_mut(fading_char.0) {
+    for actor in &fading_actors.0 {
+        let mut s = match query.get_mut(actor.0) {
             Ok(e) => e,
             Err(_) => continue
         };
         let mut color = s.color;
-        color.set_alpha(s.color.alpha() + fading_char.1);
+        color.set_alpha(s.color.alpha() + actor.1);
         s.color = color;
         if color.alpha() >= 1. || color.alpha() <= 0. {
-            finished_anim.push(fading_char.0);
+            finished_anim.push(actor.0);
         }
     }
     let mut to_remove: Vec<usize> = Vec::new();
-    fading_characters.0.iter().enumerate().for_each(|f| {
+    fading_actors.0.iter().enumerate().for_each(|f| {
         if finished_anim.contains(&f.1.0) {
             to_remove.push(f.0);
         }
     });
     to_remove.reverse();
     for index in to_remove {
-        let item = fading_characters.0.index(index);
+        let item = fading_actors.0.index(index);
         let to_despawn = item.2;
         if to_despawn {
             commands.entity(item.0).despawn();
         }
-        fading_characters.0.remove(index);
+        fading_actors.0.remove(index);
     }
-    if fading_characters.0.is_empty() {
+    if fading_actors.0.is_empty() {
         game_state.blocking = false;
     }
 }
@@ -172,8 +172,8 @@ pub fn spawn_actor(
                         ..default()
                     },
                     ZIndex(CHARACTERS_Z_INDEX),
-                    Character,
-                    actor_config,
+                    Actor,
+                    ActorConfig::Character(actor_config),
                     DespawnOnExit(SabiState::Running)
                 )
             ).id()
@@ -229,9 +229,9 @@ pub fn spawn_actor(
                         ..default()
                     },
                     ZIndex(CHARACTERS_Z_INDEX),
-                    Character,
+                    Actor,
                     AnimationTimer(Timer::new(Duration::from_secs_f32(1. / (actor_config.fps as f32)), TimerMode::Repeating)),
-                    actor_config,
+                    ActorConfig::Animation(actor_config),
                     DespawnOnExit(SabiState::Running)
                 )
             ).id()

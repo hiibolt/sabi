@@ -464,7 +464,7 @@ fn wait_trigger(
 fn exec_char_operation(
     character_config: &mut CharacterConfig,
     operation: &ActorOperation,
-    character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    actor_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
     moving_actors: &mut ResMut<MovingActors>,
@@ -479,7 +479,10 @@ fn exec_char_operation(
         ActorOperation::Spawn(info) => {
             let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
             character_config.emotion = emotion.clone();
-            if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
+            if let Some(_) = actor_query.iter_mut().find(|entity| match entity.1.clone() {
+                ActorConfig::Animation(_) => false,
+                ActorConfig::Character(a) => a.name == character_config.name
+            }) {
                 warn!("Another instance of the character is already in the World!");
             }
             spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
@@ -491,7 +494,10 @@ fn exec_char_operation(
             if !character_config.emotions.contains(&emotion) {
                 return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
             }
-            let mut entity = match character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
+            let mut entity = match actor_query.iter_mut().find(|entity| match entity.1.clone() {
+                ActorConfig::Animation(_) => false,
+                ActorConfig::Character(a) => a.name == character_config.name
+            }) {
                 Some(e) => e,
                 None => {
                     let warn_message = format!("Character {} not found in the World!", character_config.name);
@@ -503,23 +509,35 @@ fn exec_char_operation(
         },
         ActorOperation::Despawn(fading) => {
             if *fading {
-                for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
+                for entity in actor_query.iter().filter(|c| match c.1.clone() {
+                    ActorConfig::Animation(_) => false,
+                    ActorConfig::Character(a) => a.name == character_config.name
+                }) {
                     fading_actors.0.push((entity.0, -0.01, true));
                 }
                 game_state.blocking = true;
             } else {
-                for entity in character_query.iter().filter(|c| c.1.name == character_config.name) {
+                for entity in actor_query.iter().filter(|c| match c.1.clone() {
+                    ActorConfig::Animation(_) => false,
+                    ActorConfig::Character(a) => a.name == character_config.name
+                }) {
                     commands.entity(entity.0).despawn();
                 }
             }
         },
         ActorOperation::Look(direction) => {
-            for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+            for (_, _, mut image, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
+                ActorConfig::Animation(_) => false,
+                ActorConfig::Character(a) => a.name == character_config.name
+            }) {
                 image.flip_x = direction == &CharacterDirection::Left;
             }
         },
         ActorOperation::Move(position) => {
-            for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == character_config.name) {
+            for (entity, _, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
+                ActorConfig::Animation(_) => false,
+                ActorConfig::Character(a) => a.name == character_config.name
+            }) {
                 let target_position = position.to_percentage_value();
                 moving_actors.0.push((entity, target_position));
                 game_state.blocking = true;
@@ -531,7 +549,7 @@ fn exec_char_operation(
 fn exec_anim_operation(
     anim_config: &mut AnimationConfig,
     operation: &ActorOperation,
-    character_query: &mut Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    animation_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
     moving_actors: &mut ResMut<MovingActors>,
@@ -544,7 +562,10 @@ fn exec_anim_operation(
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
-            if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == anim_config.name) {
+            if let Some(_) = animation_query.iter_mut().find(|entity| match entity.1.clone() {
+                ActorConfig::Character(_) => false,
+                ActorConfig::Animation(a) => a.name == anim_config.name
+            }) {
                 warn!("Another instance of the animation is already in the World!");
             }
             spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
@@ -554,23 +575,35 @@ fn exec_anim_operation(
         },
         ActorOperation::Despawn(fading) => {
             if *fading {
-                for entity in character_query.iter().filter(|c| c.1.name == anim_config.name) {
+                for entity in animation_query.iter().filter(|c| match c.1.clone() {
+                    ActorConfig::Character(_) => false,
+                    ActorConfig::Animation(a) => a.name == anim_config.name
+                }) {
                     fading_actors.0.push((entity.0, -0.01, true));
                 }
                 game_state.blocking = true;
             } else {
-                for entity in character_query.iter().filter(|c| c.1.name == anim_config.name) {
+                for entity in animation_query.iter().filter(|c| match c.1.clone() {
+                    ActorConfig::Character(_) => false,
+                    ActorConfig::Animation(a) => a.name == anim_config.name
+                }) {
                     commands.entity(entity.0).despawn();
                 }
             }
         },
         ActorOperation::Look(direction) => {
-            for (_, _, mut image) in character_query.iter_mut().filter(|c| c.1.name == anim_config.name) {
+            for (_, _, mut image, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
+                ActorConfig::Character(_) => false,
+                ActorConfig::Animation(a) => a.name == anim_config.name
+            }) {
                 image.flip_x = direction == &CharacterDirection::Left;
             }
         },
         ActorOperation::Move(position) => {
-            for (entity, _, _) in character_query.iter_mut().filter(|c| c.1.name == anim_config.name) {
+            for (entity, _, _, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
+                ActorConfig::Character(_) => false,
+                ActorConfig::Animation(a) => a.name == anim_config.name
+            }) {
                 let target_position = position.to_percentage_value();
                 moving_actors.0.push((entity, target_position));
                 game_state.blocking = true;
@@ -582,7 +615,7 @@ fn exec_anim_operation(
 }
 fn update_actors(
     mut commands: Commands,
-    mut character_query: Query<(Entity, &mut CharacterConfig, &mut ImageNode)>,
+    mut actor_query: Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
     ui_root: Single<Entity, With<UiRoot>>,
     actor_sprites: Res<ActorsResource>,
     mut actor_configs: ResMut<ActorsConfigs>,
@@ -592,7 +625,6 @@ fn update_actors(
     mut game_state: ResMut<VisualNovelState>,
     images: Res<Assets<Image>>,
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
-    anim_timers: Query<(&mut ImageNode, &AnimationConfig, &mut AnimationTimer), Without<CharacterConfig>>,
     time: Res<Time>,
     window: Query<&Window, With<PrimaryWindow>>,
 ) -> Result<(), BevyError> {
@@ -602,19 +634,23 @@ fn update_actors(
     for msg in actor_change_message.read() {
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
         match actor_config {
-            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
-            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
+            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut actor_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
+            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut actor_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
         }
     }
     
-    for (mut image, config, mut timer) in anim_timers {
-        timer.0.tick(time.delta());
-        if timer.0.just_finished() {
-            if let Some(atlas) = &mut image.texture_atlas {
-                let next_index = atlas.index + 1;
-                atlas.index = if next_index > config.end_index {
-                    config.start_index
-                } else { next_index };
+    for (_, config, mut image, mut timer) in actor_query {
+        if let ActorConfig::Animation(config) = config.clone() {
+            if let Some(timer) = &mut timer {
+                timer.0.tick(time.delta());
+                if timer.0.just_finished() {
+                    if let Some(atlas) = &mut image.texture_atlas {
+                        let next_index = atlas.index + 1;
+                        atlas.index = if next_index > config.end_index {
+                            config.start_index
+                        } else { next_index };
+                    }
+                }
             }
         }
     }
