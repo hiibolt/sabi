@@ -180,7 +180,7 @@ fn build_actor_spawn_directive(character: &str, action: &str, mut action_iter: p
     let operation = match action {
         "appears" | "fade in" => {
             let mut info = SpawnInfo {
-                fading: action_iter.as_str() == "fade in",
+                fading: action == "fade in",
                 ..Default::default()
             };
             while let Some(a) = action_iter.next() {
@@ -208,7 +208,7 @@ fn build_actor_spawn_directive(character: &str, action: &str, mut action_iter: p
             }
             ActorOperation::Spawn(info)
         },
-        "disappears" | "fade out" => ActorOperation::Despawn(action_iter.as_str() == "fade out"),
+        "disappears" | "fade out" => ActorOperation::Despawn(action == "fade out"),
         other => bail!("Unexpected actor spawn operation: {:?}", other)
     };
     
