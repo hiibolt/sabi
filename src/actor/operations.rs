@@ -19,6 +19,19 @@ const CHARACTERS_Z_INDEX: i32 = 3;
 #[derive(Component)]
 pub struct Character;
 
+fn position_relative_to_center(
+    (left, bottom): (f32, f32),
+    (image_w, image_h): (usize, usize),
+    scale: f32,
+    window: &Window,
+) -> (f32, f32) {
+    info!("left bottom before {}, {}", left, bottom);
+    let (w_pct, h_pct) = (image_w as f32 * scale / window.resolution.width() * 100., image_h as f32 * scale / window.resolution.height() * 100.);
+    (
+        left - w_pct / 2.,
+        bottom - h_pct / 2.,
+    )
+}
 pub fn change_character_emotion(
     image: &mut ImageNode,
     sprites: &Res<ActorsResource>,
@@ -123,6 +136,7 @@ pub fn spawn_actor(
     images: &Res<Assets<Image>>,
     info: SpawnInfo,
     texture_atlas_layouts: &mut ResMut<Assets<TextureAtlasLayout>>,
+    window: &Window,
 ) -> Result<(), BevyError> {
     let actor_entity = match actor_config {
         ActorConfig::Character(actor_config) => {
@@ -183,8 +197,15 @@ pub fn spawn_actor(
                 }
             } else { AnimationPosition::default() };
             
-            let (left, bottom): (f32, f32) = position.into();
             let scale = info.scale.unwrap_or(1.);
+            if scale < 0. { return Err(anyhow::anyhow!("Scale value can´t be negative: {}", scale).into()); }
+            let (left, bottom): (f32, f32) = position_relative_to_center(
+                position.into(),
+                (actor_config.width, actor_config.height),
+                scale,
+                window,
+            );
+            info!("left bottom after {}, {}", left, bottom);
             
             commands.spawn(
                 (

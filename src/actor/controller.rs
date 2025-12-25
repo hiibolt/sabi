@@ -1,7 +1,7 @@
 use std::{any::TypeId, collections::HashMap, path::PathBuf};
 
 use anyhow::{Context, Result};
-use bevy::{asset::{LoadState, LoadedFolder}, prelude::*};
+use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, window::PrimaryWindow};
 use serde::Deserialize;
 
 use crate::{VisualNovelState, actor::operations::{apply_alpha, change_character_emotion, move_characters, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
@@ -474,6 +474,7 @@ fn exec_char_operation(
     actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
     texture_atlases: &mut ResMut<Assets<TextureAtlasLayout>>,
+    window: &Window,
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
@@ -482,7 +483,7 @@ fn exec_char_operation(
             if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == character_config.name) {
                 warn!("Another instance of the character is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases)?;
+            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
             if info.fading {
                 game_state.blocking = true;
             }
@@ -540,13 +541,14 @@ fn exec_anim_operation(
     actor_sprites: &Res<ActorsResource>,
     images: &Res<Assets<Image>>,
     texture_atlases: &mut ResMut<Assets<TextureAtlasLayout>>,
+    window: &Window,
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
             if let Some(_) = character_query.iter_mut().find(|entity| entity.1.name == anim_config.name) {
                 warn!("Another instance of the animation is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases)?;
+            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
             if info.fading {
                 game_state.blocking = true;
             }
@@ -593,13 +595,16 @@ fn update_actors(
     mut texture_atlases: ResMut<Assets<TextureAtlasLayout>>,
     anim_timers: Query<(&mut ImageNode, &AnimationConfig, &mut AnimationTimer), Without<CharacterConfig>>,
     time: Res<Time>,
+    window: Query<&Window, With<PrimaryWindow>>,
 ) -> Result<(), BevyError> {
+    
+    let window = window.single().context("Could not retrieve window entity")?;
     
     for msg in actor_change_message.read() {
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
         match actor_config {
-            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases)?,
-            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases)?,
+            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
+            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut character_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
         }
     }
     
