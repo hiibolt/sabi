@@ -56,7 +56,6 @@ pub(crate) struct AnimationConfig {
     pub columns: usize,
     pub start_index: usize,
     pub end_index: usize,
-    pub once: bool,
 }
 #[derive(Component, Debug, Asset, TypePath, Deserialize, Clone)]
 pub enum ActorConfig {
