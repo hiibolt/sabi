@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bevy::{asset::{LoadState, LoadedFolder}, prelude::*, window::PrimaryWindow};
 use serde::Deserialize;
 
-use crate::{VisualNovelState, actor::operations::{apply_alpha, change_character_emotion, move_characters, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, SabiState, ControllersSetStateMessage}};
+use crate::{VisualNovelState, actor::operations::{apply_alpha, change_character_emotion, move_characters, position_relative_to_center, spawn_actor}, compiler::controller::{Controller, ControllerReadyMessage, ControllersSetStateMessage, SabiState}};
 use crate::compiler::controller::UiRoot;
 
 pub const INVISIBLE_LEFT_PERCENTAGE: f32 = -40.;
@@ -166,6 +166,8 @@ impl TryFrom<&str> for CharacterPosition {
 
 #[derive(Component)]
 pub(crate) struct AnimationTimer(pub Timer);
+#[derive(Component)]
+pub(crate) struct AnimationScale(pub f32);
 
 /* Resources */
 #[derive(Resource)]
@@ -187,7 +189,7 @@ struct AnimFolderLoaded(pub bool);
 #[derive(Resource, Default)]
 pub(crate) struct FadingActors(pub Vec<(Entity, f32, bool)>); // entity, alpha_step, to_despawn
 #[derive(Resource, Default)]
-pub(crate) struct MovingActors(pub Vec<(Entity, f32)>); // entity, target_position
+pub(crate) struct MovingActors(pub Vec<(Entity, (f32, f32))>); // entity, target_position
 
 /* Custom types */
 #[derive(Hash, Eq, PartialEq, Debug)]
@@ -243,7 +245,7 @@ pub(crate) enum ActorOperation {
     EmotionChange(String),
     Despawn(bool), // fading
     Look(CharacterDirection),
-    Move(CharacterPosition),
+    Move(ActorPosition),
 }
 pub(crate) enum ActorType {
     Character,
@@ -464,7 +466,7 @@ fn wait_trigger(
 fn exec_char_operation(
     character_config: &mut CharacterConfig,
     operation: &ActorOperation,
-    actor_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
+    actor_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>, Option<&AnimationScale>)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
     moving_actors: &mut ResMut<MovingActors>,
@@ -526,7 +528,7 @@ fn exec_char_operation(
             }
         },
         ActorOperation::Look(direction) => {
-            for (_, _, mut image, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
+            for (_, _, mut image, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
                 ActorConfig::Animation(_) => false,
                 ActorConfig::Character(a) => a.name == character_config.name
             }) {
@@ -534,13 +536,15 @@ fn exec_char_operation(
             }
         },
         ActorOperation::Move(position) => {
-            for (entity, _, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
+            for (entity, _, _, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
                 ActorConfig::Animation(_) => false,
                 ActorConfig::Character(a) => a.name == character_config.name
             }) {
-                let target_position = position.to_percentage_value();
-                moving_actors.0.push((entity, target_position));
-                game_state.blocking = true;
+                if let ActorPosition::Character(position) = position {
+                    let target_position = position.to_percentage_value();
+                    moving_actors.0.push((entity, (target_position, 0.)));
+                    game_state.blocking = true;
+                } else { return Err(anyhow::anyhow!("Expected character position, found {:?}", position).into()); }
             }
         }
     }
@@ -549,7 +553,7 @@ fn exec_char_operation(
 fn exec_anim_operation(
     anim_config: &mut AnimationConfig,
     operation: &ActorOperation,
-    animation_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
+    animation_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>, Option<&AnimationScale>)>,
     mut commands: &mut Commands,
     mut fading_actors: &mut ResMut<FadingActors>,
     moving_actors: &mut ResMut<MovingActors>,
@@ -592,7 +596,7 @@ fn exec_anim_operation(
             }
         },
         ActorOperation::Look(direction) => {
-            for (_, _, mut image, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
+            for (_, _, mut image, _, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
                 ActorConfig::Character(_) => false,
                 ActorConfig::Animation(a) => a.name == anim_config.name
             }) {
@@ -600,13 +604,23 @@ fn exec_anim_operation(
             }
         },
         ActorOperation::Move(position) => {
-            for (entity, _, _, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
+            for (entity, _, _, _, scale) in animation_query.iter_mut().filter(|c| match c.1.clone() {
                 ActorConfig::Character(_) => false,
                 ActorConfig::Animation(a) => a.name == anim_config.name
             }) {
-                let target_position = position.to_percentage_value();
-                moving_actors.0.push((entity, target_position));
-                game_state.blocking = true;
+                if let ActorPosition::Animation(position) = position {
+                    let scale = if let Some(s) = scale { s } else { return Err(anyhow::anyhow!("Scale is not present among components").into()); };
+                    let target_position: (f32, f32) = position_relative_to_center(
+                        position.clone().into(),
+                        (anim_config.width, anim_config.height),
+                        scale.0,
+                        window,
+                    );
+                    moving_actors.0.push((entity, target_position));
+                    game_state.blocking = true;
+                } else {
+                    return Err(anyhow::anyhow!("Expected animation position, found {:?}", position).into())
+                }
             }
         },
         other => { return Err(anyhow::anyhow!("Invalid operation on animation {other:?}").into()); }
@@ -615,7 +629,7 @@ fn exec_anim_operation(
 }
 fn update_actors(
     mut commands: Commands,
-    mut actor_query: Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>)>,
+    mut actor_query: Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>, Option<&AnimationScale>)>,
     ui_root: Single<Entity, With<UiRoot>>,
     actor_sprites: Res<ActorsResource>,
     mut actor_configs: ResMut<ActorsConfigs>,
@@ -639,7 +653,7 @@ fn update_actors(
         }
     }
     
-    for (_, config, mut image, mut timer) in actor_query {
+    for (_, config, mut image, mut timer, _) in actor_query {
         if let ActorConfig::Animation(config) = config.clone() {
             if let Some(timer) = &mut timer {
                 timer.0.tick(time.delta());

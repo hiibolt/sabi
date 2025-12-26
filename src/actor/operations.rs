@@ -6,7 +6,7 @@ use crate::{
     actor::{
         CharacterConfig,
         controller::{
-            ActorConfig, ActorPosition, ActorsResource, AnimationPosition, AnimationTimer, CharacterDirection, CharacterPosition, FadingActors, MovingActors, SpawnInfo, SpriteIdentifier, SpriteKey
+            ActorConfig, ActorPosition, ActorsResource, AnimationPosition, AnimationScale, AnimationTimer, CharacterDirection, CharacterPosition, FadingActors, MovingActors, SpawnInfo, SpriteIdentifier, SpriteKey
         }
     },
     compiler::controller::SabiState
@@ -19,7 +19,7 @@ const CHARACTERS_Z_INDEX: i32 = 3;
 #[derive(Component)]
 pub struct Actor;
 
-fn position_relative_to_center(
+pub(in crate::actor) fn position_relative_to_center(
     (left, bottom): (f32, f32),
     (image_w, image_h): (usize, usize),
     scale: f32,
@@ -49,35 +49,43 @@ pub fn change_character_emotion(
 }
 pub fn move_characters(
     query: Query<(Entity, &mut Node), With<Actor>>,
-    mut moving_characters: ResMut<MovingActors>,
+    mut moving_actors: ResMut<MovingActors>,
     mut game_state: ResMut<VisualNovelState>,
 ) {
     for (entity, mut node) in query {
-        let enumerated_element = moving_characters.0.iter().enumerate().find(|(_, e)| e.0 == entity);
+        let enumerated_element = moving_actors.0.iter().enumerate().find(|(_, e)| e.0 == entity);
         if let Some((index, target_pos)) = enumerated_element {
-            let new_value = match node.left {
-                Val::Percent(val) => {
-                    if (val - target_pos.1).abs() < MOVEMENT_STEP {
-                        target_pos.1
-                    } else if val < target_pos.1 {
-                        val + MOVEMENT_STEP
-                    } else { val - MOVEMENT_STEP }
+            let new_coords: (f32, f32) = match (node.left, node.bottom) {
+                (Val::Percent(left), Val::Percent(btm)) => {
+                    let new_left = if (left - target_pos.1.0).abs() < MOVEMENT_STEP {
+                        target_pos.1.0
+                    } else if left < target_pos.1.0 {
+                        left + MOVEMENT_STEP
+                    } else { left - MOVEMENT_STEP };
+                    let new_bottom = if (btm - target_pos.1.1).abs() < MOVEMENT_STEP {
+                        target_pos.1.1
+                    } else if btm < target_pos.1.1 {
+                        btm + MOVEMENT_STEP
+                    } else { btm - MOVEMENT_STEP };
+                    
+                    (new_left, new_bottom)
                 },
                 _ => {
-                    warn!("Movement directives accepts only characters with percentage value as position!");
-                    moving_characters.0.remove(index);
-                    if moving_characters.0.is_empty() {
+                    warn!("Movement directives accepts only actors with percentage value as position!");
+                    moving_actors.0.remove(index);
+                    if moving_actors.0.is_empty() {
                         game_state.blocking = false;
                         return;
                     }
                     continue;
                 }
             };
-            node.left = percent(new_value);
-            if new_value == target_pos.1 {
-                moving_characters.0.remove(index);
+            node.left = percent(new_coords.0);
+            node.bottom = percent(new_coords.1);
+            if new_coords == target_pos.1 {
+                moving_actors.0.remove(index);
             }
-            if moving_characters.0.is_empty() {
+            if moving_actors.0.is_empty() {
                 game_state.blocking = false;
                 return;
             }
@@ -230,6 +238,7 @@ pub fn spawn_actor(
                     },
                     ZIndex(CHARACTERS_Z_INDEX),
                     Actor,
+                    AnimationScale(scale),
                     AnimationTimer(Timer::new(Duration::from_secs_f32(1. / (actor_config.fps as f32)), TimerMode::Repeating)),
                     ActorConfig::Animation(actor_config),
                     DespawnOnExit(SabiState::Running)

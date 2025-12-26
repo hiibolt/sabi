@@ -10,6 +10,7 @@ SCENE animation_example
     Fire: "I am a moving actor, which uses a spritesheet to perform some movements during time"
     Fire: "My configuration contains my spritesheet, fps, and other settings you can find in the documentation"
     Nayu: (happy) "Wow! It seems interesting, I think I'll go check it asap!"
+    (Animated "fire" moves top right)
     (Animated "fire" fade out)
     Nayu: "Not so static, perhaps..."
 CURTAIN

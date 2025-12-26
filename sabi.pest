@@ -30,7 +30,7 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
-    animation_change = { "Animated" ~ expr ~ actor_spawn_directive ~ animation_position? ~ actor_direction_directive? ~ animation_scale? }
+    animation_change = { animation_identifier ~ animation_action }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
@@ -67,6 +67,7 @@ character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
 narrator = { "info" }
+animation_identifier = { "Animated" ~ expr }
 gui_element = { "textbox" | "namebox" }
 image_mode = { "sliced" | "auto" }
 actor_spawn_directive = {
@@ -78,7 +79,7 @@ actor_spawn_directive = {
 actor_direction_directive = { actor_direction_command ~ actor_direction }
 actor_direction_command = { "looking" | "looks" }
 actor_direction = { "left" | "right" }
-character_movement_directive = { "moves" }
+actor_movement_directive = { "moves" }
 character_position = { 
                         "center" |
                         "far left" |
@@ -90,19 +91,23 @@ character_position = {
                      }
 animation_position = {
                          "top left" |
-                         "top" |
                          "top right" |
+                         "top" |
                          "left" |
                          "center" |
                          "right" |
                          "bottom left" |
-                         "bottom" |
-                         "bottom right"
+                         "bottom right" |
+                         "bottom"
                      }
 character_action =   {
                          (actor_spawn_directive ~ character_position? ~ actor_direction_directive? ~ emotion_name?) |
                          (actor_direction_directive) |
-                         (character_movement_directive ~ character_position)
+                         (actor_movement_directive ~ character_position)
+                     }
+animation_action =   {
+                         (actor_spawn_directive ~ animation_position? ~ actor_direction_directive? ~ animation_scale?) |
+                         (actor_movement_directive ~ animation_position)
                      }
 animation_scale =    {
                          ("scale" ~ number)
