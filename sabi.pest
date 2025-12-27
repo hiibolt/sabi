@@ -98,7 +98,19 @@ animation_position = {
                          "right" |
                          "bottom left" |
                          "bottom right" |
-                         "bottom"
+                         "bottom" |
+                         "outer top left" |
+                         "outer top right" |
+                         "outer top" |
+                         "outer right top" |
+                         "outer right bottom" |
+                         "outer right" |
+                         "outer bottom left" |
+                         "outer bottom right" |
+                         "outer bottom" |
+                         "outer left bottom" |
+                         "outer left top" |
+                         "outer left"
                      }
 character_action =   {
                          (actor_spawn_directive ~ character_position? ~ actor_direction_directive? ~ emotion_name?) |
