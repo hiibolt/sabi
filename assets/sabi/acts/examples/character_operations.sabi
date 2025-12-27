@@ -5,7 +5,6 @@ SCENE character_operations_example
     (Nayu appears)
     Nayu: "Let's go!"
     (Nayu disappears)
-    
     (Scene "character_spawning" begins)
 CURTAIN
 
@@ -19,12 +18,11 @@ SCENE character_spawning
     Nayu: "Characters can even fade in on the scene and, of course..."
     (Nayu fade out)
     Nayu: "...fade out"
-    (Nayu appears right)
+    (Nayu appears right looking left happy)
     Nayu: "This commands can be combined with position declaration, which defines where characters will be spawned"
     Nayu: "Currently supported position: center, left, right, far left, far right, invisible left, invisible right"
     Nayu: "You can even combine it with character direction, which we are gonna see right now"
     (Nayu disappears)
-    
     (Scene "character_direction" begins)
 CURTAIN
 
@@ -35,7 +33,6 @@ SCENE character_direction
     (Nayu looks left)
     Nayu: "Pay attention to this or your VN could show characters in opposite directions!"
     (Nayu fade out)
-    
     (Scene "character_movement" begins)
 CURTAIN
 
