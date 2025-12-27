@@ -1,4 +1,3 @@
-use crate::actor::controller::ActorType;
 use crate::chat::controller::InfoTextMessage;
 use crate::{BackgroundChangeMessage, CharacterSayMessage, GUIChangeMessage, ActorChangeMessage, VisualNovelState};
 use crate::compiler::ast::{CodeStatement, Dialogue, Evaluate, InfoText, StageCommand, Statement, TextItem};
@@ -103,19 +102,14 @@ impl Invoke for StageCommand {
             StageCommand::CharacterChange { character, operation } => {
                 info!("Invoking StageCommand::CharacterChange to {} of type {:?}", character, operation);
                 let message = ActorChangeMessage {
-                    r#type: ActorType::Character,
                     name: character.clone(),
                     operation: operation.clone()
                 };
-                if message.is_blocking() {
-                    ctx.game_state.blocking = true;
-                }
                 ctx.actor_change_message.write(message);
             },
             StageCommand::AnimationChange { animation, operation } => {
                 info!("Invoking StageCommand::AnimationChange to {} of type {:?}", animation, operation);
                 let message = ActorChangeMessage {
-                    r#type: ActorType::Animation,
                     name: animation.clone(),
                     operation: operation.clone()
                 };

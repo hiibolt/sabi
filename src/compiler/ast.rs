@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::{
-    actor::{ActorOperation, controller::{ActorPosition, AnimationPosition, CharacterDirection, CharacterPosition, SpawnInfo}}, background::controller::{BackgroundDirection, BackgroundOperation}, chat::controller::{GuiChangeTarget, GuiImageMode}
+    actor::{ActorOperation, controller::{ActorDirection, ActorPosition, ActorType, AnimationPosition, CharacterPosition, SpawnInfo}}, background::controller::{BackgroundDirection, BackgroundOperation}, chat::controller::{GuiChangeTarget, GuiImageMode}
 };
 
 #[derive(Parser)]
@@ -176,60 +176,72 @@ pub(crate) fn build_expression(pair: pest::iterators::Pair<Rule>) -> Result<Expr
         .context("Failed to parse expression")
 }
 
-fn build_actor_spawn_directive(character: &str, action: &str, mut action_iter: pest::iterators::Pairs<'_, Rule>) -> Result<StageCommand> {
+fn build_actor_spawn_directive(r#type: ActorType, actor: &str, action: &str, mut action_iter: pest::iterators::Pairs<'_, Rule>) -> Result<StageCommand> {
     let operation = match action {
         "appears" | "fade in" => {
-            let mut info = SpawnInfo {
+            let mut spawn_info = SpawnInfo {
                 fading: action == "fade in",
                 ..Default::default()
             };
-            while let Some(a) = action_iter.next() {
-                match a.as_rule() {
-                    Rule::emotion_name => { info.emotion = Some(a.as_str().to_owned()); },
+            while let Some(directive) = action_iter.next() {
+                match directive.as_rule() {
+                    Rule::emotion_name => { spawn_info.emotion = Some(directive.as_str().to_owned()); },
                     Rule::character_position => {
-                        let position = match CharacterPosition::try_from(a.as_str()) {
+                        let position = match CharacterPosition::try_from(directive.as_str()) {
                             Ok(pos) => pos,
                             Err(e) => bail!(e)
                         };
-                        info.position = Some(ActorPosition::Character(position));
+                        spawn_info.position = Some(ActorPosition::Character(position));
                     }
-                    Rule::actor_direction_directive => {
-                        let mut inner_rules = a.into_inner();
-                        let _ = inner_rules.next().context("Could not get action direction command")?;
-                        let direction = inner_rules.next().context("Could not get actor direction")?;
-                        match direction.as_str() {
-                            "left" => info.direction = CharacterDirection::Left,
-                            "right" => info.direction = CharacterDirection::Right,
-                            other => { return Err(anyhow::anyhow!("Unhandled direction provided {:?}", other).into()); }
-                        };
+                    Rule::animation_position => {
+                        let position = AnimationPosition::try_from(directive.as_str())?;
+                        spawn_info.position = Some(ActorPosition::Animation(position));
                     },
-                    other => { bail!("Unexpected added action to character spawn directive! {:?}", other); }
+                    Rule::actor_direction_directive => {
+                        let mut pair_iter = directive.into_inner();
+                        let _ = pair_iter.next().context("Missing direction command")?;
+                        let direction = pair_iter.next().context("Missing direction")?;
+                        spawn_info.direction = ActorDirection::try_from(direction.as_str())?;
+                    },
+                    Rule::animation_scale => {
+                        let mut pair_iter = directive.into_inner();
+                        let scale = pair_iter.next().context("Missing scale value")?;
+                        let number: f32 = if scale.as_str().contains(".") { scale.as_str().parse()? } else { scale.as_str().parse::<i32>()? as f32 };
+                        spawn_info.scale = Some(number);
+                    },
+                    other => { bail!("Unexpected added action to actor spawn directive! {:?}", other); }
                 };
             }
-            ActorOperation::Spawn(info)
+            ActorOperation::Spawn(spawn_info)
         },
         "disappears" | "fade out" => ActorOperation::Despawn(action == "fade out"),
         other => bail!("Unexpected actor spawn operation: {:?}", other)
     };
     
-    Ok(StageCommand::CharacterChange { character: character.to_string(), operation })
+    match r#type {
+        ActorType::Character => Ok(StageCommand::CharacterChange { character: actor.to_string(), operation }),
+        ActorType::Animation => Ok(StageCommand::AnimationChange { animation: actor.to_string(), operation })
+    }
 }
 
-fn build_character_direction_directive(character: &str, action: Pair<'_, Rule>) -> Result<StageCommand> {
+fn build_actor_direction_directive(r#type: ActorType, actor: &str, action: Pair<'_, Rule>) -> Result<StageCommand> {
     let mut direction_iter = action.into_inner();
     let _ = direction_iter.next().context("Could not get direction command")?;
     let direction = direction_iter.next().context("Could not get direction")?;
     let direction = match direction.as_rule() {
         Rule::actor_direction => {
             match direction.as_str() {
-                "left" => CharacterDirection::Left,
-                "right" => CharacterDirection::Right,
+                "left" => ActorDirection::Left,
+                "right" => ActorDirection::Right,
                 other => { bail!("Unhandled direction provided {:?}", other); }
             }
         },
-        other => { bail!("Character direction directive needs direction argument [\"left\", \"right\"], found {:?}", other); }
+        other => { bail!("Actor direction directive needs direction argument [\"left\", \"right\"], found {:?}", other); }
     };
-    Ok(StageCommand::CharacterChange { character: character.to_string(), operation: ActorOperation::Look(direction) })
+    match r#type {
+        ActorType::Character => Ok(StageCommand::CharacterChange { character: actor.to_string(), operation: ActorOperation::Look(direction) }),
+        ActorType::Animation => Ok(StageCommand::AnimationChange { animation: actor.to_string(), operation: ActorOperation::Look(direction) })
+    }
 }
 
 fn build_actor_movement_directive(actor: &str, action: &str, mut action_iter: pest::iterators::Pairs<'_, Rule>) -> Result<StageCommand> {
@@ -371,9 +383,9 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
             let mut action_iter = action.into_inner();
             let action = action_iter.next().context("Could not get inner action")?;
             match action.as_rule() {
-                Rule::actor_spawn_directive         => { build_actor_spawn_directive(&character, action.as_str(), action_iter)? }
-                Rule::actor_direction_directive     => { build_character_direction_directive(&character, action)? },
-                Rule::actor_movement_directive  => { build_actor_movement_directive(&character, action.as_str(), action_iter)? },
+                Rule::actor_spawn_directive         => { build_actor_spawn_directive(ActorType::Character, &character, action.as_str(), action_iter)? }
+                Rule::actor_direction_directive     => { build_actor_direction_directive(ActorType::Character, &character, action)? },
+                Rule::actor_movement_directive      => { build_actor_movement_directive(&character, action.as_str(), action_iter)? },
                 other => { bail!("Unexpected rule in character_action {:?}", other); }
             }
         },
@@ -396,44 +408,9 @@ pub(crate) fn build_stage_command(pair: Pair<Rule>) -> Result<Statement> {
             let directive = inner_rules.next().context("Could not get animation action elements")?;
             
             match directive.as_rule() {
-                Rule::actor_spawn_directive => {
-                    match directive.as_str() {
-                        "appears" | "fade in" => {
-                            let mut spawn_info = SpawnInfo::default();
-                            
-                            while let Some(directive) = inner_rules.next() {
-                                match directive.as_rule() {
-                                    Rule::animation_position => {
-                                        let position = AnimationPosition::try_from(directive.as_str())?;
-                                        spawn_info.position = Some(ActorPosition::Animation(position));
-                                    },
-                                    Rule::actor_direction_directive => {
-                                        let mut pair_iter = directive.into_inner();
-                                        let _ = pair_iter.next().context("Missing direction command")?;
-                                        let direction = pair_iter.next().context("Missing direction")?;
-                                        spawn_info.direction = CharacterDirection::try_from(direction.as_str())?;
-                                    },
-                                    Rule::animation_scale => {
-                                        let mut pair_iter = directive.into_inner();
-                                        let scale = pair_iter.next().context("Missing scale value")?;
-                                        let number: f32 = if scale.as_str().contains(".") { scale.as_str().parse()? } else { scale.as_str().parse::<i32>()? as f32 };
-                                        spawn_info.scale = Some(number);
-                                    },
-                                    other => info!("Unexpected rule in animation definition! {:?}", other)
-                                }
-                            }
-                            
-                            StageCommand::AnimationChange { animation, operation: ActorOperation::Spawn(spawn_info) }
-                        },
-                        "disappears" |  "fade out" => {
-                            StageCommand::AnimationChange { animation, operation: ActorOperation::Despawn(directive.as_str() == "fade out") }
-                        },
-                        other => { return Err(anyhow::anyhow!("Unexpected spawn directive! {}", other).into()); }
-                    }
-                },
-                Rule::actor_movement_directive => {
-                    build_actor_movement_directive(&animation, directive.as_str(), inner_rules)?
-                },
+                Rule::actor_spawn_directive     => build_actor_spawn_directive(ActorType::Animation, &animation, directive.as_str(), inner_rules)?,
+                Rule::actor_movement_directive  => build_actor_movement_directive(&animation, directive.as_str(), inner_rules)?,
+                Rule::actor_direction_directive => build_actor_direction_directive(ActorType::Animation, &animation, directive)?,
                 other => { return Err(anyhow::anyhow!("Unexpected directive! {:?}", other).into()); }
             }
         }

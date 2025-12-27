@@ -6,7 +6,7 @@ use crate::{
     actor::{
         CharacterConfig,
         controller::{
-            ActorConfig, ActorPosition, ActorsResource, AnimationPosition, AnimationScale, AnimationTimer, CharacterDirection, CharacterPosition, FadingActors, MovingActors, SpawnInfo, SpriteIdentifier, SpriteKey
+            ActorConfig, ActorPosition, ActorsResource, AnimationPosition, AnimationScale, AnimationTimer, ActorDirection, CharacterPosition, FadingActors, MovingActors, SpawnInfo, SpriteIdentifier, SpriteKey
         }
     },
     compiler::controller::SabiState
@@ -168,7 +168,7 @@ pub fn spawn_actor(
                         color: Color::default().with_alpha(if info.fading {
                             0.
                         } else { 1. }),
-                        flip_x: info.direction == CharacterDirection::Left,
+                        flip_x: info.direction == ActorDirection::Left,
                         ..default()
                     },
                     Node {
@@ -224,7 +224,7 @@ pub fn spawn_actor(
                         color: Color::default().with_alpha(if info.fading {
                             0.
                         } else { 1. }),
-                        flip_x: info.direction == CharacterDirection::Left,
+                        flip_x: info.direction == ActorDirection::Left,
                         ..default()
                     },
                     Node {

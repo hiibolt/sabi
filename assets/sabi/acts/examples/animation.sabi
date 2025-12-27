@@ -8,6 +8,7 @@ SCENE animation_example
     Fire: "Hi Nayu, I am the first animation in your world"
     Nayu: "Animation? What is?"
     Fire: "I am a moving actor, which uses a spritesheet to perform some movements during time"
+    (Animated "fire" looks left)
     Fire: "My configuration contains my spritesheet, fps, and other settings you can find in the documentation"
     Nayu: (happy) "Wow! It seems interesting, I think I'll go check it asap!"
     (Animated "fire" moves top right)

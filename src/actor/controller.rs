@@ -209,19 +209,19 @@ type AnimationSprites = HashMap<String, Handle<Image>>;
 type ActorsConfig = HashMap<String, ActorConfig>;
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum CharacterDirection {
+pub enum ActorDirection {
     Left,
     #[default]
     Right
 }
 
-impl TryFrom<&str> for CharacterDirection {
+impl TryFrom<&str> for ActorDirection {
     type Error = std::io::Error;
     
     fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
         match value {
-            "left" => Ok(CharacterDirection::Left),
-            "right" => Ok(CharacterDirection::Right),
+            "left" => Ok(ActorDirection::Left),
+            "right" => Ok(ActorDirection::Right),
             other => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 format!("Unexpected direction: {:?}", other),
@@ -234,7 +234,7 @@ impl TryFrom<&str> for CharacterDirection {
 pub struct SpawnInfo {
     pub emotion: Option<String>,
     pub position: Option<ActorPosition>,
-    pub direction: CharacterDirection,
+    pub direction: ActorDirection,
     pub fading: bool,
     pub scale: Option<f32>,
 }
@@ -244,7 +244,7 @@ pub(crate) enum ActorOperation {
     Spawn(SpawnInfo), 
     EmotionChange(String),
     Despawn(bool), // fading
-    Look(CharacterDirection),
+    Look(ActorDirection),
     Move(ActorPosition),
 }
 pub(crate) enum ActorType {
@@ -255,20 +255,8 @@ pub(crate) enum ActorType {
 /* Messages */
 #[derive(Message)]
 pub(crate) struct ActorChangeMessage {
-    pub r#type: ActorType,
     pub name: String,
     pub operation: ActorOperation,
-}
-impl ActorChangeMessage {
-    pub fn is_blocking(&self) -> bool {
-        match &self.operation {
-            ActorOperation::Spawn(info) => {
-                if info.fading { true } else { false }
-            },
-            ActorOperation::Despawn(true) => true,
-            _ => false
-        }
-    }
 }
 
 pub(crate) struct CharacterController;
@@ -463,8 +451,8 @@ fn wait_trigger(
         controller_state.set(msg.0.into());
     }
 }
-fn exec_char_operation(
-    character_config: &mut CharacterConfig,
+fn exec_operation(
+    actor_config: &mut ActorConfig,
     operation: &ActorOperation,
     actor_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>, Option<&AnimationScale>)>,
     mut commands: &mut Commands,
@@ -479,151 +467,100 @@ fn exec_char_operation(
 ) -> Result<(), BevyError> {
     match operation {
         ActorOperation::Spawn(info) => {
-            let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { character_config.emotion.clone() };
-            character_config.emotion = emotion.clone();
-            if let Some(_) = actor_query.iter_mut().find(|entity| match entity.1.clone() {
-                ActorConfig::Animation(_) => false,
-                ActorConfig::Character(a) => a.name == character_config.name
-            }) {
-                warn!("Another instance of the character is already in the World!");
+            let already_spawn_entity = actor_query.iter().find(|c| match (&c.1, &actor_config) {
+                (ActorConfig::Character(a), ActorConfig::Character(b)) => a.name == b.name,
+                (ActorConfig::Animation(a), ActorConfig::Animation(b)) => a.name == b.name,
+                _ => false
+            });
+            if let Some(_) = already_spawn_entity {
+                warn!("Another instance of the actor is already in the World!");
             }
-            spawn_actor(&mut commands, ActorConfig::Character(character_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
+            if let ActorConfig::Character(c) = actor_config {
+                let emotion = if let Some(e) = &info.emotion { e.to_owned() } else { c.emotion.clone() };
+                c.emotion = emotion.clone();
+            }
+            spawn_actor(&mut commands, actor_config.clone(), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
             if info.fading {
                 game_state.blocking = true;
             }
         },
         ActorOperation::EmotionChange(emotion) => {
-            if !character_config.emotions.contains(&emotion) {
+            let actor_config = if let ActorConfig::Character(c) = actor_config {
+                c
+            } else { return Err(anyhow::anyhow!("Expected characted config, found {:?}", actor_config).into()); };
+            if !actor_config.emotions.contains(&emotion) {
                 return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
             }
             let mut entity = match actor_query.iter_mut().find(|entity| match entity.1.clone() {
                 ActorConfig::Animation(_) => false,
-                ActorConfig::Character(a) => a.name == character_config.name
+                ActorConfig::Character(a) => a.name == actor_config.name
             }) {
                 Some(e) => e,
                 None => {
-                    let warn_message = format!("Character {} not found in the World!", character_config.name);
+                    let warn_message = format!("Character {} not found in the World!", actor_config.name);
                     warn!(warn_message);
                     return Ok(());
                 }
             };
-            change_character_emotion(&mut entity.2, &actor_sprites, emotion, character_config)?;
+            change_character_emotion(&mut entity.2, &actor_sprites, emotion, actor_config)?;
         },
         ActorOperation::Despawn(fading) => {
+            let entities = actor_query.iter().filter(|c| match (&c.1, &actor_config) {
+                (ActorConfig::Character(a), ActorConfig::Character(b)) => a.name == b.name,
+                (ActorConfig::Animation(a), ActorConfig::Animation(b)) => a.name == b.name,
+                _ => false
+            });
             if *fading {
-                for entity in actor_query.iter().filter(|c| match c.1.clone() {
-                    ActorConfig::Animation(_) => false,
-                    ActorConfig::Character(a) => a.name == character_config.name
-                }) {
+                for entity in entities {
                     fading_actors.0.push((entity.0, -0.01, true));
                 }
                 game_state.blocking = true;
             } else {
-                for entity in actor_query.iter().filter(|c| match c.1.clone() {
-                    ActorConfig::Animation(_) => false,
-                    ActorConfig::Character(a) => a.name == character_config.name
-                }) {
+                for entity in entities {
                     commands.entity(entity.0).despawn();
                 }
             }
         },
         ActorOperation::Look(direction) => {
-            for (_, _, mut image, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
-                ActorConfig::Animation(_) => false,
-                ActorConfig::Character(a) => a.name == character_config.name
-            }) {
-                image.flip_x = direction == &CharacterDirection::Left;
+            let entities = actor_query.iter_mut().filter(|c| match (&*c.1, &actor_config) {
+                (ActorConfig::Character(a), ActorConfig::Character(b)) => a.name == b.name,
+                (ActorConfig::Animation(a), ActorConfig::Animation(b)) => a.name == b.name,
+                _ => false
+            });
+            for (_, _, mut image, _, _) in entities {
+                image.flip_x = direction == &ActorDirection::Left;
             }
         },
         ActorOperation::Move(position) => {
-            for (entity, _, _, _, _) in actor_query.iter_mut().filter(|c| match c.1.clone() {
-                ActorConfig::Animation(_) => false,
-                ActorConfig::Character(a) => a.name == character_config.name
-            }) {
-                if let ActorPosition::Character(position) = position {
-                    let target_position = position.to_percentage_value();
-                    moving_actors.0.push((entity, (target_position, 0.)));
-                    game_state.blocking = true;
-                } else { return Err(anyhow::anyhow!("Expected character position, found {:?}", position).into()); }
+            let entities = actor_query.iter().filter(|c| match (&c.1, &actor_config) {
+                (ActorConfig::Character(a), ActorConfig::Character(b)) => a.name == b.name,
+                (ActorConfig::Animation(a), ActorConfig::Animation(b)) => a.name == b.name,
+                _ => false
+            });
+            for (entity, _, _, _, scale) in entities {
+                let (entity, target_position) = match position {
+                    ActorPosition::Character(position) => {
+                        let target_position = position.to_percentage_value();
+                        (entity, (target_position, 0.))
+                    },
+                    ActorPosition::Animation(position) => {
+                        let scale = if let Some(s) = scale { s } else { return Err(anyhow::anyhow!("Scale is not present among components").into()); };
+                        let anim_config = if let ActorConfig::Animation(config) = &actor_config {
+                            config
+                        } else { return Err(anyhow::anyhow!("Expected animation config, found {:?}", actor_config).into()); };
+                        let target_position: (f32, f32) = position_relative_to_center(
+                            position.clone().into(),
+                            (anim_config.width, anim_config.height),
+                            scale.0,
+                            window,
+                        );
+                        (entity, target_position)
+                    }
+                };
+                moving_actors.0.push((entity, target_position));
+                game_state.blocking = true;
             }
         }
-    }
-    Ok(())
-}
-fn exec_anim_operation(
-    anim_config: &mut AnimationConfig,
-    operation: &ActorOperation,
-    animation_query: &mut Query<(Entity, &mut ActorConfig, &mut ImageNode, Option<&mut AnimationTimer>, Option<&AnimationScale>)>,
-    mut commands: &mut Commands,
-    mut fading_actors: &mut ResMut<FadingActors>,
-    moving_actors: &mut ResMut<MovingActors>,
-    ui_root: &Single<Entity, With<UiRoot>>,
-    game_state: &mut ResMut<VisualNovelState>,
-    actor_sprites: &Res<ActorsResource>,
-    images: &Res<Assets<Image>>,
-    texture_atlases: &mut ResMut<Assets<TextureAtlasLayout>>,
-    window: &Window,
-) -> Result<(), BevyError> {
-    match operation {
-        ActorOperation::Spawn(info) => {
-            if let Some(_) = animation_query.iter_mut().find(|entity| match entity.1.clone() {
-                ActorConfig::Character(_) => false,
-                ActorConfig::Animation(a) => a.name == anim_config.name
-            }) {
-                warn!("Another instance of the animation is already in the World!");
-            }
-            spawn_actor(&mut commands, ActorConfig::Animation(anim_config.clone()), &actor_sprites, &mut fading_actors, &ui_root, &images, info.clone(), texture_atlases, &window)?;
-            if info.fading {
-                game_state.blocking = true;
-            }
-        },
-        ActorOperation::Despawn(fading) => {
-            if *fading {
-                for entity in animation_query.iter().filter(|c| match c.1.clone() {
-                    ActorConfig::Character(_) => false,
-                    ActorConfig::Animation(a) => a.name == anim_config.name
-                }) {
-                    fading_actors.0.push((entity.0, -0.01, true));
-                }
-                game_state.blocking = true;
-            } else {
-                for entity in animation_query.iter().filter(|c| match c.1.clone() {
-                    ActorConfig::Character(_) => false,
-                    ActorConfig::Animation(a) => a.name == anim_config.name
-                }) {
-                    commands.entity(entity.0).despawn();
-                }
-            }
-        },
-        ActorOperation::Look(direction) => {
-            for (_, _, mut image, _, _) in animation_query.iter_mut().filter(|c| match c.1.clone() {
-                ActorConfig::Character(_) => false,
-                ActorConfig::Animation(a) => a.name == anim_config.name
-            }) {
-                image.flip_x = direction == &CharacterDirection::Left;
-            }
-        },
-        ActorOperation::Move(position) => {
-            for (entity, _, _, _, scale) in animation_query.iter_mut().filter(|c| match c.1.clone() {
-                ActorConfig::Character(_) => false,
-                ActorConfig::Animation(a) => a.name == anim_config.name
-            }) {
-                if let ActorPosition::Animation(position) = position {
-                    let scale = if let Some(s) = scale { s } else { return Err(anyhow::anyhow!("Scale is not present among components").into()); };
-                    let target_position: (f32, f32) = position_relative_to_center(
-                        position.clone().into(),
-                        (anim_config.width, anim_config.height),
-                        scale.0,
-                        window,
-                    );
-                    moving_actors.0.push((entity, target_position));
-                    game_state.blocking = true;
-                } else {
-                    return Err(anyhow::anyhow!("Expected animation position, found {:?}", position).into())
-                }
-            }
-        },
-        other => { return Err(anyhow::anyhow!("Invalid operation on animation {other:?}").into()); }
     }
     Ok(())
 }
@@ -647,10 +584,7 @@ fn update_actors(
     
     for msg in actor_change_message.read() {
         let actor_config = actor_configs.0.get_mut(&msg.name).context(format!("Actor config not found for {}", &msg.name))?;
-        match actor_config {
-            ActorConfig::Character(c) => exec_char_operation(c, &msg.operation, &mut actor_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
-            ActorConfig::Animation(a) => exec_anim_operation(a, &msg.operation, &mut actor_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?,
-        }
+        exec_operation(actor_config, &msg.operation, &mut actor_query, &mut commands, &mut fading_actors, &mut moving_actors, &ui_root, &mut game_state, &actor_sprites, &images, &mut texture_atlases, window)?;
     }
     
     for (_, config, mut image, mut timer, _) in actor_query {

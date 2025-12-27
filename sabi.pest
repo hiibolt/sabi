@@ -107,6 +107,7 @@ character_action =   {
                      }
 animation_action =   {
                          (actor_spawn_directive ~ animation_position? ~ actor_direction_directive? ~ animation_scale?) |
+                         (actor_direction_directive) |
                          (actor_movement_directive ~ animation_position)
                      }
 animation_scale =    {
