@@ -71,7 +71,7 @@ pub fn move_characters(
                     (new_left, new_bottom)
                 },
                 _ => {
-                    warn!("Movement directives accepts only actors with percentage value as position!");
+                    warn!("Movement directives accept only actors with percentage value as position!");
                     moving_actors.0.remove(index);
                     if moving_actors.0.is_empty() {
                         game_state.blocking = false;
@@ -205,7 +205,7 @@ pub fn spawn_actor(
             } else { AnimationPosition::default() };
             
             let scale = info.scale.unwrap_or(1.);
-            if scale < 0. { return Err(anyhow::anyhow!("Scale value can´t be negative: {}", scale).into()); }
+            if scale < 0. { return Err(anyhow::anyhow!("Scale value can't be negative: {}", scale).into()); }
             let (left, bottom): (f32, f32) = position_relative_to_center(
                 position.into(),
                 (actor_config.width, actor_config.height),

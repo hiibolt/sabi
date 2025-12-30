@@ -397,7 +397,7 @@ fn define_animations_map(
             animations_configs.insert(config.name.clone(), ActorConfig::Animation(config.clone()));
         } else {
             let path = handle.path().context("Error retrieving animation asset path")?.path();
-            let name: String = path.file_stem().context("Animation file has no name")?.to_string_lossy().to_owned().to_string();
+            let name: String = path.file_stem().context("Animation file has no name")?.to_string_lossy().to_string();
             animations_sprites.insert(name, handle.clone().typed());
         }
     }
@@ -523,11 +523,11 @@ fn exec_operation(
         ActorOperation::EmotionChange(emotion) => {
             let actor_config = if let ActorConfig::Character(c) = actor_config {
                 c
-            } else { return Err(anyhow::anyhow!("Expected characted config, found {:?}", actor_config).into()); };
+            } else { return Err(anyhow::anyhow!("Expected character config, found {:?}", actor_config).into()); };
             if !actor_config.emotions.contains(&emotion) {
                 return Err(anyhow::anyhow!("Character does not have {} emotion!", emotion).into());
             }
-            let mut entity = match actor_query.iter_mut().find(|entity| match entity.1.clone() {
+            let mut entity = match actor_query.iter_mut().find(|(_, actor_cfg, ..)| match &**actor_cfg {
                 ActorConfig::Animation(_) => false,
                 ActorConfig::Character(a) => a.name == actor_config.name
             }) {
@@ -624,14 +624,14 @@ fn update_actors(
     }
     
     for (_, config, mut image, mut timer, _) in actor_query {
-        if let ActorConfig::Animation(config) = config.clone() {
+        if let ActorConfig::Animation(animation_config) = &*config {
             if let Some(timer) = &mut timer {
                 timer.0.tick(time.delta());
                 if timer.0.just_finished() {
                     if let Some(atlas) = &mut image.texture_atlas {
                         let next_index = atlas.index + 1;
-                        atlas.index = if next_index > config.end_index {
-                            config.start_index
+                        atlas.index = if next_index > animation_config.end_index {
+                            animation_config.start_index
                         } else { next_index };
                     }
                 }

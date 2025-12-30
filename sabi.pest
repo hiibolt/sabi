@@ -148,5 +148,5 @@ background_direction    = {
                           }
 
 // Intrinsic types
-number    = @{ "-"? ~ ASCII_DIGIT+ ~ "."* ~ ASCII_DIGIT* }
+number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
 string    = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
