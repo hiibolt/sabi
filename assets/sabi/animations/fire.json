@@ -1,0 +1,10 @@
+{
+  "name": "fire",
+  "width": 32,
+  "height": 48,
+  "fps": 3,
+  "rows": 1,
+  "columns": 8,
+  "start_index": 0,
+  "end_index": 7
+}

@@ -1,17 +1,19 @@
 mod background;
-mod character;
+mod actor;
 mod chat;
 mod compiler;
 mod loader;
 
 use crate::background::*;
-use crate::character::*;
+use crate::actor::controller::ActorConfig;
+use crate::actor::controller::AnimationConfig;
+use crate::actor::*;
 use crate::chat::*;
 use crate::compiler::ast::Evaluate;
 use crate::compiler::ast::Statement;
 use crate::compiler::ast::TextItem;
 use crate::compiler::*;
-use crate::loader::CharacterJsonLoader;
+use crate::loader::ActorJsonLoader;
 use crate::loader::PestLoader;
 
 use bevy::prelude::*;
@@ -178,8 +180,10 @@ impl Plugin for SabiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UserDefinedConstants>()
             .init_resource::<VisualNovelState>()
+            .init_asset::<ActorConfig>()
             .init_asset::<CharacterConfig>()
-            .init_asset_loader::<CharacterJsonLoader>()
+            .init_asset::<AnimationConfig>()
+            .init_asset_loader::<ActorJsonLoader>()
             .init_asset::<ast::Act>()
             .init_asset_loader::<PestLoader>()
             .set_error_handler(sabi_error_handler)

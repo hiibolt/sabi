@@ -23,12 +23,14 @@ stage_command = { "(" ~ stage_command_type ~ ")" }
         background_change |
         scene_change |
         act_change |
-        character_change }
+        character_change |
+        animation_change }
     background_change = { background_directive }
     gui_change = { "GUI" ~ gui_element ~ "changes" ~ "to" ~ expr ~ image_mode? }
     scene_change = { "Scene" ~ expr ~ "begins" }
     act_change = { "Act" ~ expr ~ "begins" }
     character_change = { character_name ~ character_action }
+    animation_change = { animation_identifier ~ animation_action }
 
 // Code statements
 code = { "{" ~ code_statement ~ "}" }
@@ -65,17 +67,19 @@ character_name = @{ ASCII_ALPHA_UPPER ~ ASCII_ALPHA_LOWER+ }
 emotion_name = @{ ASCII_ALPHA+ }
 mc_identifier = { "MC" }
 narrator = { "info" }
+animation_identifier = { "Animated" ~ expr }
 gui_element = { "textbox" | "namebox" }
 image_mode = { "sliced" | "auto" }
-character_spawn_directive = {
-                                "appears" |
-                                "disappears" |
-                                "fade in" |
-                                "fade out"
-                            }
-character_direction_directive = { "looking" | "looks" }
-character_direction = { "left" | "right" }
-character_movement_directive = { "moves" }
+actor_spawn_directive = {
+                            "appears" |
+                            "disappears" |
+                            "fade in" |
+                            "fade out"
+                        }
+actor_direction_directive = { actor_direction_command ~ actor_direction }
+actor_direction_command = { "looking" | "looks" }
+actor_direction = { "left" | "right" }
+actor_movement_directive = { "moves" }
 character_position = { 
                         "center" |
                         "far left" |
@@ -85,11 +89,42 @@ character_position = {
                         "invisible left" |
                         "invisible right"
                      }
-character_action =  {
-                        (character_spawn_directive ~ character_position? ~ emotion_name?) |
-                        (character_direction_directive ~ character_direction) |
-                        (character_movement_directive ~ character_position)
-                    }
+animation_position = {
+                         "top left" |
+                         "top right" |
+                         "top" |
+                         "left" |
+                         "center" |
+                         "right" |
+                         "bottom left" |
+                         "bottom right" |
+                         "bottom" |
+                         "outer top left" |
+                         "outer top right" |
+                         "outer top" |
+                         "outer right top" |
+                         "outer right bottom" |
+                         "outer right" |
+                         "outer bottom left" |
+                         "outer bottom right" |
+                         "outer bottom" |
+                         "outer left bottom" |
+                         "outer left top" |
+                         "outer left"
+                     }
+character_action =   {
+                         (actor_spawn_directive ~ character_position? ~ actor_direction_directive? ~ emotion_name?) |
+                         (actor_direction_directive) |
+                         (actor_movement_directive ~ character_position)
+                     }
+animation_action =   {
+                         (actor_spawn_directive ~ animation_position? ~ actor_direction_directive? ~ animation_scale?) |
+                         (actor_direction_directive) |
+                         (actor_movement_directive ~ animation_position)
+                     }
+animation_scale =    {
+                         ("scale" ~ number)
+                     }
                    
 // Background definitions
 background_directive = { "Background" ~ background_action }
@@ -113,5 +148,5 @@ background_direction    = {
                           }
 
 // Intrinsic types
-number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+number    = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? }
 string    = @{ "\"" ~ (!"\"" ~ ANY)* ~ "\"" }
