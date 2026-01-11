@@ -1,162 +1,214 @@
 # Sabi
-**A Modern Visual Novel Game Engine**
 
-Sabi is a cutting-edge visual novel engine built with Rust and Bevy, featuring dynamic character interactions and flexible scripting capabilities. Create immersive, responsive visual novels with rich character systems, dynamic backgrounds, and engaging dialogue.
+Sabi is a visual novel engine built on Rust and Bevy ECS. It provides a domain-specific scripting language with stage direction syntax, a modular character system with emotion-based sprites, and runtime asset management through Bevy's asset pipeline.
 
 ![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)
 ![Bevy](https://img.shields.io/badge/bevy-2C2D33?style=for-the-badge&logo=bevy&logoColor=white)
 
-## ✨ Features
+## Features
 
-### 🎭 **Advanced Character System**
-- **Dynamic Character Management**: JSON-based character definitions with customizable attributes
-- **Emotion System**: Real-time emotion changes that affect character sprites and dialogue
-- **Multi-Outfit Support**: Characters can switch between different outfits and emotional states
-- **Character Descriptions**: Rich personality profiles for immersive storytelling
+**Scripting Language**
+- Pest-based parser with stage direction syntax inspired by theatrical scripts
+- Scene-based organization with named transitions
+- Expression evaluation supporting string concatenation and variable substitution
+- Inline emotion changes during dialogue
 
-### 🎨 **Rich Visual Experience**
-- **Dynamic Backgrounds**: Environment changes based on story progression
-- **Character Sprites**: Emotion-based sprite switching with fade transitions
-- **Custom GUI System**: Modular interface with themed textboxes and UI elements
-- **Typing Animation**: Smooth text scrolling effects for immersive reading
+**Actor System**
+- JSON-based character definitions with sprite mappings per emotion and outfit
+- Frame-based sprite sheet animations with configurable FPS
+- Character positioning system using percentage-based coordinates that scale with window size
+- Fade in/out and directional facing with automatic sprite flipping
+- Actor movement with interpolation between positions
 
-### 📝 **Flexible Scripting Engine**
-- **Custom Script Language**: Bash-like syntax for easy story creation
-- **Scene Management**: Seamless transitions between story segments
-- **Command System**: Rich set of commands for controlling game flow
-- **Event-Driven Architecture**: Responsive system for handling user interactions
+**Rendering**
+- ECS-based architecture separating character state from visual representation
+- Background management with transition support
+- Customizable GUI elements (textbox, namebox) with 9-slice and auto scaling
+- Text rendering with character-by-character reveal animation
+- History system tracking all dialogue and stage directions
 
-### 🔧 **Developer-Friendly**
-- **Modular Plugin System**: Built on Bevy's ECS architecture
-- **Hot-Reloadable Assets**: Dynamic loading of scripts, sprites, and configurations
-- **Cross-Platform**: Runs on Windows, macOS, and Linux
-- **Nix Integration**: Reproducible development environment with flake.nix
+**Development Environment**
+- Nix flake for reproducible builds
+- Hot-reloadable assets during development
+- Six example projects demonstrating different features
+- Modular plugin architecture for extending functionality
 
-## 🚀 Quick Start
+## Getting Started
 
 ### Prerequisites
-- Rust (latest stable)
-- Git
+- Rust toolchain (1.80+)
+- Cargo
 
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/sabi.git
-   cd sabi
-   ```
-
-2. **Run the game:**
-   ```bash
-   cargo run
-   ```
-
-### Using Nix (Recommended)
-```bash
-nix develop  # Enter development shell
-cargo run    # Build and run
-```
-
-## 📚 Script Language Reference
-
-Sabi uses a custom scripting language with bash-like syntax for defining story flow:
-
-### Basic Commands
+### Running Examples
 
 ```bash
-# Character dialogue
-say character=`Nayu` msg=`Hello, how are you today?`
-
-# Player dialogue
-psay msg=`I'm doing great, thanks for asking!`
-
-# Set character emotion
-set type=`emotion` character=`Nayu` emotion=`HAPPY`
-
-# Change background
-set type=`background` background=`main_classroom_day`
-
-# Scene transitions
-scene id=`scene2`
-
-# Logging (development)
-log msg=`Debug message here`
+cargo run --example basic_startup
+cargo run --example character_operations
+cargo run --example animation
+cargo run --example background
+cargo run --example ui
+cargo run --example infotext
 ```
 
-### Advanced Features
-
+### Using Nix
 ```bash
-# GUI customization
-set type=`GUI` id=`_textbox_background` sprite=`TEXTBOX_NAYU`
-
-# End scene
-end
+nix develop
+cargo run --example basic_startup
 ```
 
-## 🏗️ Architecture
+## Script Language
 
-Sabi is built on Bevy's Entity Component System (ECS) with distinct modules:
+Sabi scripts use a `.sabi` extension and organize content into scenes with stage directions:
 
-- **Compiler Module**: Parses script files and converts them to executable transitions
-- **Character Module**: Manages character sprites, emotions, and properties
-- **Chat Module**: Handles dialogue display and text animation
-- **Background Module**: Controls scene backgrounds and environmental changes
+```
+SCENE opening
+    (GUI textbox changes to "TEXTBOX_DEFAULT")
+    (Background changes to "classroom_day")
+    (Nayu appears center)
+    Nayu: "This is dialogue."
+    Nayu: (happy) "Emotions can change inline."
+    MC: "Player character speaks like this."
+    (Nayu moves right)
+    (Nayu looks left)
+    (Nayu fade out)
+    (Scene "next_scene" begins)
+CURTAIN
+```
 
-## 🔧 Configuration
+### Supported Commands
 
-### Game Settings
-Player name and other settings are currently configured in `src/main.rs`:
+**Character Operations**
+- `(Character appears [position] [looking direction] [emotion])`
+- `(Character disappears)`
+- `(Character fade in/out)`
+- `(Character moves position)`
+- `(Character looks left/right)`
+
+**Positions**: `center`, `left`, `right`, `far left`, `far right`, `invisible left`, `invisible right`
+
+**Scene Management**
+- `(Scene "scene_name" begins)` - Jump to different scene
+- `(Background changes to "background_id")`
+- `(GUI element changes to "sprite_id" [sliced|auto])` - Customize textbox/namebox
+
+**Animations**
+- `(Animated "animation_id" appears position scale N)`
+- `(Animated "animation_id" fade in/out)`
+- `(Animated "animation_id" moves position)`
+- `(Animated "animation_id" looks left/right)`
+
+**Dialogue**
+- `Character: "dialogue text"` - Named character speaks
+- `Character: (emotion) "dialogue"` - Inline emotion change
+- `MC: "dialogue"` - Main character (substitutes player name)
+- `info: "text"` - Narrator/info text
+
+**Logging**
+- `{log "debug message"}` - Console output for development
+
+## Project Structure
+
+```
+src/
+├── actor/           # Character and animation controllers
+├── background/      # Background rendering system
+├── chat/            # Dialogue box and text animation
+├── compiler/        # Script parser and AST
+└── loader/          # Asset loaders for JSON and .sabi files
+
+assets/sabi/
+├── acts/            # Script files organized by chapter
+├── animations/      # Animation sprite sheets (JSON)
+├── backgrounds/     # Background images
+├── characters/      # Character sprites and configs
+├── fonts/           # Text rendering fonts
+└── ui/              # UI element sprites
+```
+
+## Integration
+
+Add Sabi to your Bevy app:
 
 ```rust
-game_state.playername = String::from("YourName");
+use sabi::*;
+use bevy::prelude::*;
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(SabiPlugin)
+        .add_systems(Startup, setup)
+        .run();
+}
+
+fn setup(
+    mut commands: Commands,
+    mut msg_writer: MessageWriter<SabiStart>,
+    mut user_defined_constants: ResMut<UserDefinedConstants>,
+) {
+    user_defined_constants.playername = "Player".into();
+    commands.spawn(Camera2d::default());
+    msg_writer.write(SabiStart(ScriptId { 
+        chapter: "chapter1".into(), 
+        act: "opening".into() 
+    }));
+}
 ```
 
-## 🤝 Contributing
+## Architecture
 
-We welcome contributions! Here are some areas where you can help:
+Sabi uses Bevy's ECS with a plugin-based architecture:
 
-- **UI/UX Improvements**: Enhanced text input, visual effects
-- **Script Language Features**: New commands and functionality  
-- **Performance Optimization**: Better asset loading and memory management
-- **Cross-Platform Support**: Testing and fixes for different platforms
+- **Compiler Plugin**: Parses `.sabi` scripts into an AST, evaluates expressions, manages scene transitions and game state
+- **Character Controller**: Spawns/despawns actors, handles movement interpolation, manages fade effects and sprite switching
+- **Chat Controller**: Renders dialogue boxes, implements text reveal animation, maintains conversation history
+- **Background Controller**: Loads and transitions between background images
 
-### Development Setup
+The system uses Bevy's message passing for coordination between plugins and resource-based state management for the script execution cursor and character configurations.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+## Asset Configuration
 
-## 📋 Roadmap
+**Character Definition** (`character.json`):
+```json
+{
+  "name": "Nayu",
+  "outfits": {
+    "uniform": {
+      "emotions": {
+        "neutral": "nayu_neutral.png",
+        "happy": "nayu_happy.png",
+        "concerned": "nayu_concerned.png"
+      }
+    }
+  }
+}
+```
 
-### Completed ✅
-- [x] Character system with emotions and outfits
-- [x] Custom scripting language
-- [x] Scene management
-- [x] Dynamic backgrounds
-- [x] Text rendering and animation
+**Animation Definition** (`animation.json`):
+```json
+{
+  "name": "fire",
+  "spritesheet": "fire_sheet.png",
+  "frames": 8,
+  "fps": 12,
+  "frame_width": 64,
+  "frame_height": 64
+}
+```
 
-### In Progress 🚧
-- [ ] Enhanced text input system
-- [ ] Visual transition effects
-- [ ] Save/load system
-- [ ] Audio integration
+## Current Limitations
 
-### Planned 📅
-- [ ] Visual script editor
-- [ ] Multiplayer support
-- [ ] Mobile platform support
-- [ ] Steam Workshop integration
-- [ ] Advanced character interaction system
+- No save/load system
+- Audio not implemented
+- No branching/choice system
+- Text input requires external implementation
+- Asset paths are hardcoded relative to `assets/sabi/`
 
-## 🙏 Acknowledgments
+## License
 
-- Built with [Bevy Engine](https://bevyengine.org/)
-- Development environment managed with [Nix](https://nixos.org/)
-- Special thanks to the Rust and game development communities
+See [LICENSE.md](LICENSE.md)
 
-## Assets credits
+## Credits
 
-- Ui Panels (9 slice types) made by [BDragon1727](https://bdragon1727.itch.io/custom-border-and-panels-menu-all-part)
-- Fire animation made by [Devkidd](https://devkidd.itch.io/pixel-fire-asset-pack)
+- UI Panels by [BDragon1727](https://bdragon1727.itch.io/custom-border-and-panels-menu-all-part)
+- Fire animation by [Devkidd](https://devkidd.itch.io/pixel-fire-asset-pack)
